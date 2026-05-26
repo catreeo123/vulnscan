@@ -7,10 +7,6 @@ Generated from `post-tier4-synthesis.md` + post-Group-1 code-review. Each file i
 | # | Title | Decision | Origin |
 |---|-------|----------|--------|
 | 10 | [AdvisoryStore repository pilot](10-advisory-store-pilot.md) | run pilot (2-3 test conversions + ADR) | A2 |
-| 12 | [Claude Code Skill `/vulnscan`](12-claude-code-skill.md) | PRD — see sub-issues below | AI-friendly initiative |
-| 12a | [Skill scaffold: core happy path](12a-skill-scaffold.md) | create skill file, happy path | AI-friendly initiative |
-| 12b | [Signal enrichment](12b-signal-enrichment.md) | breaking change + MAL + no-fix + warnings (blocked by 12a) | AI-friendly initiative |
-| 12c | [Error cases](12c-error-cases.md) | missing binary + missing lockfile (blocked by 12a) | AI-friendly initiative |
 
 ## Deferred (HITL — decision recorded as defer)
 
@@ -23,6 +19,10 @@ Generated from `post-tier4-synthesis.md` + post-Group-1 code-review. Each file i
 
 | # | Title | Commit |
 |---|-------|--------|
+| 12 | Claude Code Skill `/vulnscan` (PRD + skill file + E2E contract tests) | `7225487` |
+| 12a | Skill scaffold: core happy path | `7225487` |
+| 12b | Signal enrichment (breaking change, MAL, no-fix, warnings) | `7225487` |
+| 12c | Error cases (missing binary, missing lockfile) | `7225487` |
 | 07 | JSON renderer surfaces warnings | `731a725` |
 | 08 | Scope `-h` / `--help` to subcommands | `731a725` |
 | 01 | Extract `checkPackage` into scanner.ts | `f8d98d3` |
