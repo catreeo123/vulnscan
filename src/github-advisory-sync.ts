@@ -1,0 +1,166 @@
+import type Database from 'better-sqlite3'
+import type { Advisory, SemverRange, Severity } from './types.js'
+import { upsertAdvisory, setLastSyncedAt } from './local-db.js'
+
+const GITHUB_API = 'https://api.github.com'
+const PER_PAGE = 100
+const MAX_PAGES = 1000
+
+type GhVuln = {
+  package: { ecosystem: string; name: string }
+  vulnerable_version_range: string | null
+  first_patched_version: string | null
+}
+
+type GhAdvisory = {
+  ghsa_id: string
+  cve_id: string | null
+  severity: string
+  html_url: string
+  summary: string
+  vulnerabilities: GhVuln[]
+}
+
+export async function syncGithubAdvisories(
+  db: Database.Database,
+  since?: number,
+  onProgress?: (imported: number) => void,
+): Promise<{ imported: number; skipped: number }> {
+  const token = process.env.GITHUB_TOKEN
+  if (!token) {
+    process.stderr.write('GitHub Advisory: no GITHUB_TOKEN — syncing at 60 req/hr (slow)\n')
+  }
+
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  }
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  let imported = 0
+  let skipped = 0
+  let page = 0
+
+  const upsert = db.transaction((advisory: Advisory) => upsertAdvisory(db, advisory))
+
+  process.stderr.write('GitHub Advisory: paginating npm advisories...\n')
+
+  const sinceFilter =
+    since !== undefined && Number.isFinite(since)
+      ? `&updated=${encodeURIComponent('>=')}${new Date(since).toISOString()}`
+      : ''
+  let nextUrl: string | null = `${GITHUB_API}/advisories?type=reviewed&ecosystem=npm&per_page=${PER_PAGE}${sinceFilter}`
+
+  while (nextUrl) {
+    page++
+    if (page > MAX_PAGES) {
+      process.stderr.write(`\nGitHub Advisory: reached page limit (${MAX_PAGES}), stopping\n`)
+      break
+    }
+
+    const res = await fetchWithRetry(nextUrl, headers)
+    const items = (await res.json()) as GhAdvisory[]
+
+    if (!Array.isArray(items) || items.length === 0) break
+
+    for (const item of items) {
+      const advisories = ghAdvisoryToAdvisories(item)
+      for (const advisory of advisories) {
+        upsert(advisory)
+        imported++
+      }
+      if (advisories.length === 0) skipped++
+    }
+
+    process.stderr.write(`GitHub Advisory: page ${page} — ${imported} imported\r`)
+    if (onProgress) onProgress(imported)
+
+    nextUrl = parseLinkNext(res.headers.get('link'))
+  }
+
+  // Only bump the cursor on clean loop exit. A mid-pagination throw preserves
+  // the cursor so the next sync retries from the same point. The empty-response
+  // case (items.length===0 on first or later page) is treated as success and
+  // bumps the cursor — this means a transient API issue returning empty is
+  // indistinguishable from genuine "no new advisories" and accepted as residual
+  // risk (see code-review finding C6).
+  setLastSyncedAt(db, 'github', Date.now())
+  process.stderr.write(`GitHub Advisory: imported ${imported} advisories (${skipped} items skipped)\n`)
+  return { imported, skipped }
+}
+
+function parseLinkNext(link: string | null): string | null {
+  if (!link) return null
+  const match = link.match(/<([^>]+)>;\s*rel="next"/)
+  return match ? match[1] : null
+}
+
+function ghAdvisoryToAdvisories(item: GhAdvisory): Advisory[] {
+  const npmVulns = item.vulnerabilities.filter((v) => v.package.ecosystem === 'npm')
+  if (npmVulns.length === 0) return []
+
+  const id = item.cve_id ?? item.ghsa_id
+  const severity = mapSeverity(item.severity)
+
+  return npmVulns
+    .filter((v) => v.package.name && v.vulnerable_version_range)
+    .map((v): Advisory => {
+      const ghsaMatch = item.html_url.match(/GHSA-[a-z0-9]+-[a-z0-9]+-[a-z0-9]+/i)
+      const canonicalId = ghsaMatch ? ghsaMatch[0].toUpperCase() : item.ghsa_id.toUpperCase()
+      return {
+        id,
+        canonicalId,
+        type: 'cve',
+        packageName: v.package.name,
+        ranges: parseGhRange(v.vulnerable_version_range!),
+        severity,
+        title: item.summary,
+        url: item.html_url,
+      }
+    })
+}
+
+function parseGhRange(rangeStr: string): SemverRange[] {
+  // GitHub Advisory range strings are valid semver range expressions.
+  // Store as rawRange so AffectedRangeMatcher can use them directly.
+  return [{ rawRange: rangeStr }]
+}
+
+function mapSeverity(s: string): Severity {
+  const u = s.toUpperCase()
+  if (u === 'CRITICAL') return 'critical'
+  if (u === 'HIGH') return 'high'
+  if (u === 'MODERATE' || u === 'MEDIUM') return 'moderate'
+  return 'low'
+}
+
+export async function fetchWithRetry(
+  url: string,
+  headers: Record<string, string>,
+  retries = 3,
+): Promise<Response> {
+  let finalStatus = 0
+  let finalStatusText = ''
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const res = await fetch(url, { headers })
+    if (res.status === 429 || res.status === 403) {
+      finalStatus = res.status
+      finalStatusText = res.statusText
+      const retryAfter = parseInt(res.headers.get('retry-after') ?? '60', 10)
+      if (attempt < retries - 1) {
+        process.stderr.write(`GitHub Advisory: rate limited, waiting ${retryAfter}s...\n`)
+        await res.body?.cancel()
+        await new Promise((r) => setTimeout(r, retryAfter * 1000))
+        continue
+      }
+      await res.body?.cancel()
+      break
+    }
+    if (!res.ok) throw new Error(`GitHub API error: ${res.status} ${res.statusText}`)
+    return res
+  }
+  if (finalStatus === 403) {
+    throw new Error(`GitHub API error: 403 ${finalStatusText} — check GITHUB_TOKEN`)
+  }
+  throw new Error('GitHub API: max retries exceeded')
+}
