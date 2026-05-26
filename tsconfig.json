@@ -8,5 +8,6 @@
     "rootDir": "src",
     "declaration": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.e2e.test.ts"]
 }
