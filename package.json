@@ -1,5 +1,5 @@
 {
-  "name": "vulnscan",
+  "name": "@catreeo123/vulnscan",
   "version": "0.0.1",
   "description": "Scan Node.js dependencies for vulnerabilities missing from npm audit",
   "type": "module",
