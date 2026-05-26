@@ -8,6 +8,7 @@ import { renderGrouped, renderJson } from './output-renderer.js'
 import { runScan, checkPackage } from './scanner.js'
 import { parseArgs } from './cli-args.js'
 import { scrubSecrets } from './secrets.js'
+import { maybeBootstrap } from './bootstrap.js'
 import type { Severity, Finding } from './types.js'
 
 // M3: parseArgs is now called inside main(), not at module scope.
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
     const version = pkgArg.slice(lastAt + 1)
 
     const config = loadConfig(parsed.dir ?? '.')
+    await maybeBootstrap()
     const db = openDb()
     try {
       const result = await checkPackage({ name, version, db, config })
@@ -67,6 +69,7 @@ async function main(): Promise<void> {
       process.stderr.write(`Error: package-lock.json not found at ${lockfilePath}\n`)
       process.exit(1)
     }
+    await maybeBootstrap()
     const db = openDb()
     try { // B2 fix
       const config = loadConfig(projectDir)

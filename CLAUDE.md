@@ -80,6 +80,7 @@ CLI `--fail-on` overrides config. Invalid severities warn to stderr and fall bac
 |----------|--------|
 | `VULNSCAN_DB_PATH` | Override SQLite path |
 | `GITHUB_TOKEN` | Auth for GitHub Advisory API — without it, rate-limited to 60 req/hr |
+| `VULNSCAN_NO_BOOTSTRAP` | Skip release DB download on first run; fall straight to full OSV sync |
 
 ## Test Layout
 

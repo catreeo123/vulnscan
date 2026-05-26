@@ -66,6 +66,9 @@ A `.vulnscanrc` file at project root or user home. Stores Failure Threshold and 
 ### Severity
 A rating assigned to a Vulnerability. Four levels in descending order: `critical`, `high`, `moderate`, `low`. Derived from CVSS score via the upstream Source. When Sources conflict, highest severity wins.
 
+### Bootstrap
+The one-time operation that seeds the Local DB on a fresh install by downloading a pre-built compressed advisory snapshot from the latest GitHub release asset (`db.sqlite.gz`). Runs silently before the first Scan or Check when no Local DB exists. Falls back to a full Sync if the download fails. Skipped when `VULNSCAN_NO_BOOTSTRAP` is set.
+
 ### Claude Code Skill
 A vulnscan integration for Claude Code that runs a Scan, parses the JSON output, and provides active advisory: explains each Finding, gives the safe upgrade version, and describes the breaking change risk. Invoked as a slash command inside Claude Code sessions. Implementation contract: `.claude/skill-contract.md`.
 
