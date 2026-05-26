@@ -95,6 +95,20 @@ Open issues tracked in `.claude/issues/INDEX.md`. Active (ready for pickup): #10
 - **JSON output schema** — `docs/output-schema.md`. Full field reference for `--format json` output. Read before parsing or building any consumer of vulnscan's JSON.
 - **Claude Code Skill contract** — `.claude/skill-contract.md`. Specifies the `/vulnscan` skill: input, output format, edge cases, and the decisions behind each behavior. Read before implementing issue #12.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`catreeo123/vulnscan`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context repo — `CONTEXT.md` at root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
