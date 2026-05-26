@@ -1,11 +1,6 @@
 import { vi, it, describe, expect, beforeEach } from 'vitest'
-import type Database from 'better-sqlite3'
+import type { AdvisoryStore } from './types.js'
 import { eventsToRanges } from './osv-sync.js'
-
-vi.mock('./local-db.js', () => ({
-  upsertAdvisoryFromFullSync: vi.fn(),
-  setLastSyncedAt: vi.fn(),
-}))
 
 // Two-entry OSV ZIP fixture (base64-encoded)
 const FIXTURE_ZIP_B64 =
@@ -13,7 +8,6 @@ const FIXTURE_ZIP_B64 =
 
 function makeFixtureResponse(): Response {
   const buf = Buffer.from(FIXTURE_ZIP_B64, 'base64')
-  // Build a Web ReadableStream from the buffer
   const stream = new ReadableStream({
     start(controller) {
       controller.enqueue(new Uint8Array(buf))
@@ -23,12 +17,17 @@ function makeFixtureResponse(): Response {
   return new Response(stream, { status: 200 })
 }
 
-function makeDb(): { db: Database.Database; transactionWrapper: ReturnType<typeof vi.fn> } {
-  const transactionWrapper = vi.fn()
-  const db = {
-    transaction: vi.fn(() => transactionWrapper),
-  } as unknown as Database.Database
-  return { db, transactionWrapper }
+function makeStore(): AdvisoryStore {
+  return {
+    getForPackage: vi.fn().mockReturnValue([]),
+    upsert: vi.fn(),
+    upsertFromFullSync: vi.fn(),
+    count: vi.fn().mockReturnValue(0),
+    pruneStale: vi.fn(),
+    getLastSyncedAt: vi.fn().mockReturnValue(null),
+    setLastSyncedAt: vi.fn(),
+    close: vi.fn(),
+  }
 }
 
 beforeEach(() => {
@@ -64,21 +63,16 @@ describe('eventsToRanges', () => {
 
 // ─── M2: all upserts run inside ONE batched transaction ───
 
-it('M2: calls batchUpsert wrapper exactly once for multiple advisories', async () => {
+it('M2: upsertFromFullSync called once per advisory in the fixture', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeFixtureResponse()))
 
-  const { db, transactionWrapper } = makeDb()
+  const store = makeStore()
   const { syncOsv } = await import('./osv-sync.js')
-  await syncOsv(db)
+  await syncOsv(store)
 
-  // The transaction factory should be called once (to create the batchUpsert fn)
-  expect((db.transaction as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1)
-  // The returned wrapper should be invoked exactly once (batched call with all advisories)
-  expect(transactionWrapper).toHaveBeenCalledTimes(1)
-  // And that single call receives an array
-  const [arg] = transactionWrapper.mock.calls[0] as [unknown[]]
-  expect(Array.isArray(arg)).toBe(true)
-  expect(arg.length).toBeGreaterThan(0)
+  // Fixture has 2 entries; each produces advisories → upsertFromFullSync called per advisory
+  expect(vi.mocked(store.upsertFromFullSync)).toHaveBeenCalled()
+  expect(vi.mocked(store.upsertFromFullSync).mock.calls.length).toBeGreaterThan(0)
 })
 
 // ─── I4: onProgress event uses `parsed` (queued-count), not `imported` (persisted-count) ───
@@ -86,12 +80,12 @@ it('M2: calls batchUpsert wrapper exactly once for multiple advisories', async (
 it('I4: onProgress callback receives { parsed, total } object shape', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeFixtureResponse()))
 
-  const { db } = makeDb()
+  const store = makeStore()
   const { syncOsv } = await import('./osv-sync.js')
 
   // Typed as the new object signature — tsc enforces the contract at compile time
   const spy: (event: { parsed: number; total: number }) => void = vi.fn()
-  await syncOsv(db, spy)
+  await syncOsv(store, spy)
 
   // Fixture has 2 entries (< 500 threshold), so progress never fires — but if it did,
   // spy.mock.calls[0][0] would be an object with a `parsed` key, not a bare number.
@@ -123,10 +117,10 @@ it('M1: does not call res.arrayBuffer() — streaming path is taken', async () =
   Object.defineProperty(mockRes, 'arrayBuffer', { value: arrayBufferSpy, writable: false })
 
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockRes))
-  const { db } = makeDb()
+  const store = makeStore()
   const { syncOsv } = await import('./osv-sync.js')
 
   // Should complete without error (arrayBuffer spy would throw if called)
-  await expect(syncOsv(db)).resolves.not.toThrow()
+  await expect(syncOsv(store)).resolves.not.toThrow()
   expect(arrayBufferSpy).not.toHaveBeenCalled()
 })

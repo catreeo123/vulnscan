@@ -1,12 +1,10 @@
 import AdmZip from 'adm-zip'
-import type Database from 'better-sqlite3'
 import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
 import { createWriteStream, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Advisory, SemverRange, Severity } from './types.js'
-import { upsertAdvisoryFromFullSync, setLastSyncedAt } from './local-db.js'
+import type { Advisory, AdvisoryStore, SemverRange, Severity } from './types.js'
 
 const OSV_NPM_URL = 'https://osv-vulnerabilities.storage.googleapis.com/npm/all.zip'
 
@@ -27,8 +25,8 @@ type OsvEntry = {
 }
 
 export async function syncOsv(
-  db: Database.Database,
-  // "parsed" = queued in memory; DB write happens in a single batch after the parse loop
+  store: AdvisoryStore,
+  // "parsed" = queued in memory; store write happens in a single batch after the parse loop
   onProgress?: (event: { parsed: number; total: number }) => void,
 ): Promise<{ imported: number; skipped: number; fullSyncStartedAt: number }> {
   const fullSyncStartedAt = Date.now()
@@ -78,21 +76,18 @@ export async function syncOsv(
       if (onProgress && imported % 500 === 0) onProgress({ parsed: imported, total })
     }
 
-    const batchUpsert = db.transaction((all: Advisory[]) => {
-      for (const a of all) {
-        try {
-          upsertAdvisoryFromFullSync(db, a, fullSyncStartedAt)
-        } catch (err) {
-          // Per-row recovery: a single bad advisory must not roll back the entire batch.
-          skipped++
-          imported--
-          process.stderr.write(`Warning: skipping advisory ${a.id}: ${(err as Error).message}\n`)
-        }
+    for (const a of allAdvisories) {
+      try {
+        store.upsertFromFullSync(a, fullSyncStartedAt)
+      } catch (err) {
+        // Per-row recovery: a single bad advisory must not abort the entire sync.
+        skipped++
+        imported--
+        process.stderr.write(`Warning: skipping advisory ${a.id}: ${(err as Error).message}\n`)
       }
-    })
-    batchUpsert(allAdvisories)
+    }
 
-    setLastSyncedAt(db, 'osv', Date.now())
+    store.setLastSyncedAt('osv', Date.now())
     process.stderr.write(`OSV: imported ${imported} advisories (${skipped} skipped)\n`)
     return { imported, skipped, fullSyncStartedAt }
   } finally {

@@ -1,10 +1,6 @@
-import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { openDb, upsertAdvisory } from './local-db.js'
+import { vi, it, expect, describe, beforeEach } from 'vitest'
 import { syncIfStale } from './sync-orchestrator.js'
-import type Database from 'better-sqlite3'
+import { InMemoryAdvisoryStore } from './advisory-store-memory.js'
 
 vi.mock('./sync-orchestrator.js', () => ({
   syncIfStale: vi.fn().mockResolvedValue(undefined),
@@ -13,17 +9,10 @@ vi.mock('./sync-orchestrator.js', () => ({
 // imported after mock is set up
 const { runScan, checkPackage } = await import('./scanner.js')
 
-let tmpDir: string
-let db: Database.Database
+let store: InMemoryAdvisoryStore
 
 beforeEach(() => {
-  tmpDir = mkdtempSync(join(tmpdir(), 'scanner-test-'))
-  db = openDb(join(tmpDir, 'test.sqlite'))
-})
-
-afterEach(() => {
-  db.close()
-  rmSync(tmpDir, { recursive: true, force: true })
+  store = new InMemoryAdvisoryStore()
 })
 
 const baseConfig = { failOn: ['critical' as const], stalenessHours: 24 }
@@ -36,7 +25,7 @@ const emptyLockfile = JSON.stringify({
 
 describe('checkPackage', () => {
   it('TEST C1: vulnerable package → finding returned with correct advisoryCount', async () => {
-    upsertAdvisory(db, {
+    store.upsert({
       id: 'CVE-TEST-C01',
       canonicalId: 'GHSA-0000-0000-0C01',
       type: 'cve',
@@ -48,16 +37,16 @@ describe('checkPackage', () => {
     })
 
     vi.mocked(syncIfStale).mockClear()
-    const result = await checkPackage({ name: 'express', version: '4.18.0', db, config: baseConfig })
+    const result = await checkPackage({ name: 'express', version: '4.18.0', store, config: baseConfig })
 
     expect(result.findings).toHaveLength(1)
     expect(result.findings[0].name).toBe('express')
     expect(result.advisoryCount).toBe(1)
-    expect(syncIfStale).toHaveBeenCalledWith(db, baseConfig.stalenessHours * 60 * 60 * 1000)
+    expect(syncIfStale).toHaveBeenCalledWith(store, baseConfig.stalenessHours * 60 * 60 * 1000)
   })
 
   it('TEST C2: non-vulnerable version → no findings', async () => {
-    upsertAdvisory(db, {
+    store.upsert({
       id: 'CVE-TEST-C02',
       canonicalId: 'GHSA-0000-0000-0C02',
       type: 'cve',
@@ -68,14 +57,14 @@ describe('checkPackage', () => {
       url: 'https://github.com/advisories/GHSA-0000-0000-0C02',
     })
 
-    const result = await checkPackage({ name: 'express', version: '4.19.1', db, config: baseConfig })
+    const result = await checkPackage({ name: 'express', version: '4.19.1', store, config: baseConfig })
 
     expect(result.findings).toHaveLength(0)
     expect(result.advisoryCount).toBe(1)
   })
 
   it('TEST C3: unknown package → no findings', async () => {
-    const result = await checkPackage({ name: 'some-unknown-pkg', version: '1.0.0', db, config: baseConfig })
+    const result = await checkPackage({ name: 'some-unknown-pkg', version: '1.0.0', store, config: baseConfig })
 
     expect(result.findings).toHaveLength(0)
     expect(result.advisoryCount).toBe(0)
@@ -84,7 +73,7 @@ describe('checkPackage', () => {
 
 describe('runScan', () => {
   it('TEST 1: empty lockfile → empty findings, advisoryCount reflects seeded DB', async () => {
-    upsertAdvisory(db, {
+    store.upsert({
       id: 'CVE-TEST-001',
       canonicalId: 'GHSA-0000-0000-0001',
       type: 'cve',
@@ -95,14 +84,14 @@ describe('runScan', () => {
       url: 'https://github.com/advisories/GHSA-0000-0000-0001',
     })
 
-    const result = await runScan({ lockfileContent: emptyLockfile, db, config: baseConfig })
+    const result = await runScan({ lockfileContent: emptyLockfile, store, config: baseConfig })
 
     expect(result.findings).toHaveLength(0)
     expect(result.advisoryCount).toBe(1)
   })
 
   it('TEST 2: vulnerable package → finding returned', async () => {
-    upsertAdvisory(db, {
+    store.upsert({
       id: 'CVE-TEST-002',
       canonicalId: 'GHSA-0000-0000-0002',
       type: 'cve',
@@ -124,7 +113,7 @@ describe('runScan', () => {
       },
     })
 
-    const result = await runScan({ lockfileContent, db, config: baseConfig })
+    const result = await runScan({ lockfileContent, store, config: baseConfig })
 
     expect(result.findings).toHaveLength(1)
     expect(result.findings[0].name).toBe('lodash')
@@ -132,7 +121,7 @@ describe('runScan', () => {
 
   it('TEST 4: malformed lockfile rejects with descriptive error before any sync', async () => {
     await expect(
-      runScan({ lockfileContent: '{not json', db, config: baseConfig }),
+      runScan({ lockfileContent: '{not json', store, config: baseConfig }),
     ).rejects.toThrow(/is not valid JSON/)
   })
 
@@ -143,7 +132,7 @@ describe('runScan', () => {
       dependencies: { lodash: { version: '4.17.20' } },
     })
 
-    const result = await runScan({ lockfileContent: v1Lockfile, db, config: baseConfig })
+    const result = await runScan({ lockfileContent: v1Lockfile, store, config: baseConfig })
 
     expect(result.findings).toHaveLength(0)
     expect(result.warnings.some((w) => w.includes('v1'))).toBe(true)

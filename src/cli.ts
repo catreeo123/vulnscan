@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
-import { openDb } from './local-db.js'
+import { openStore } from './advisory-store-sqlite.js'
 import { runSync } from './sync-orchestrator.js'
 import { loadConfig, validateFailOn } from './config.js'
 import { renderGrouped, renderJson } from './output-renderer.js'
@@ -22,11 +22,11 @@ async function main(): Promise<void> {
   }
 
   if (parsed.command === 'update') {
-    const db = openDb()
+    const store = openStore()
     try { // B2 fix
-      await runSync(db)
+      await runSync(store)
     } finally {
-      safeClose(db)
+      safeClose(store)
     }
     return
   }
@@ -43,9 +43,9 @@ async function main(): Promise<void> {
 
     const config = loadConfig(parsed.dir ?? '.')
     await maybeBootstrap()
-    const db = openDb()
+    const store = openStore()
     try {
-      const result = await checkPackage({ name, version, db, config })
+      const result = await checkPackage({ name, version, store, config })
 
       if (parsed.format === 'json') {
         process.stdout.write(renderJson(result.findings, []) + '\n')
@@ -57,7 +57,7 @@ async function main(): Promise<void> {
       // M1 fix: use exitCode + return instead of process.exit after stdout writes
       process.exitCode = shouldFail(result.findings, getFailOn(parsed.failOn, parsed.dir ?? '.')) ? 1 : 0
     } finally {
-      safeClose(db)
+      safeClose(store)
     }
     return
   }
@@ -70,14 +70,14 @@ async function main(): Promise<void> {
       process.exit(1)
     }
     await maybeBootstrap()
-    const db = openDb()
+    const store = openStore()
     try { // B2 fix
       const config = loadConfig(projectDir)
       const lockfileContent = readFileSync(lockfilePath, 'utf8')
       const packageJsonPath = resolve(projectDir, 'package.json')
       const packageJsonContent = existsSync(packageJsonPath) ? readFileSync(packageJsonPath, 'utf8') : undefined
 
-      const result = await runScan({ lockfileContent, packageJsonContent, db, config })
+      const result = await runScan({ lockfileContent, packageJsonContent, store, config })
 
       if (parsed.format === 'json') {
         process.stdout.write(renderJson(result.findings, result.warnings) + '\n')
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
       // M1 fix: use exitCode + return instead of process.exit after stdout writes
       process.exitCode = shouldFail(result.findings, failOn) ? 1 : 0
     } finally {
-      safeClose(db)
+      safeClose(store)
     }
     return
   }

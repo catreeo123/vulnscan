@@ -4,9 +4,7 @@ Generated from `post-tier4-synthesis.md` + post-Group-1 code-review. Each file i
 
 ## Active (decision made, ready for implementation)
 
-| # | Title | Decision | Origin |
-|---|-------|----------|--------|
-| 10 | [AdvisoryStore repository pilot](10-advisory-store-pilot.md) | run pilot (2-3 test conversions + ADR) | A2 |
+_None._
 
 ## Deferred (HITL — decision recorded as defer)
 
@@ -19,6 +17,7 @@ Generated from `post-tier4-synthesis.md` + post-Group-1 code-review. Each file i
 
 | # | Title | Commit |
 |---|-------|--------|
+| 10 | AdvisoryStore repository pilot (interface + adapters + ADR-0002) | _pending_ |
 | 12 | Claude Code Skill `/vulnscan` (PRD + skill file + E2E contract tests) | `7225487` |
 | 12a | Skill scaffold: core happy path | `7225487` |
 | 12b | Signal enrichment (breaking change, MAL, no-fix, warnings) | `7225487` |

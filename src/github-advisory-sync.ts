@@ -1,6 +1,4 @@
-import type Database from 'better-sqlite3'
-import type { Advisory, SemverRange, Severity } from './types.js'
-import { upsertAdvisory, setLastSyncedAt } from './local-db.js'
+import type { Advisory, AdvisoryStore, SemverRange, Severity } from './types.js'
 
 const GITHUB_API = 'https://api.github.com'
 const PER_PAGE = 100
@@ -22,7 +20,7 @@ type GhAdvisory = {
 }
 
 export async function syncGithubAdvisories(
-  db: Database.Database,
+  store: AdvisoryStore,
   since?: number,
   onProgress?: (imported: number) => void,
 ): Promise<{ imported: number; skipped: number }> {
@@ -41,7 +39,7 @@ export async function syncGithubAdvisories(
   let skipped = 0
   let page = 0
 
-  const upsert = db.transaction((advisory: Advisory) => upsertAdvisory(db, advisory))
+  const upsert = (advisory: Advisory) => store.upsert(advisory)
 
   process.stderr.write('GitHub Advisory: paginating npm advisories...\n')
 
@@ -84,7 +82,7 @@ export async function syncGithubAdvisories(
   // bumps the cursor — this means a transient API issue returning empty is
   // indistinguishable from genuine "no new advisories" and accepted as residual
   // risk (see code-review finding C6).
-  setLastSyncedAt(db, 'github', Date.now())
+  store.setLastSyncedAt('github', Date.now())
   process.stderr.write(`GitHub Advisory: imported ${imported} advisories (${skipped} items skipped)\n`)
   return { imported, skipped }
 }

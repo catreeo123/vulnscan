@@ -1,16 +1,17 @@
 import { vi, it, expect, beforeEach, describe } from 'vitest'
-import type Database from 'better-sqlite3'
-import { setLastSyncedAt } from './local-db.js'
+import type { AdvisoryStore } from './types.js'
 
-vi.mock('./local-db.js', () => ({
-  upsertAdvisory: vi.fn(),
-  setLastSyncedAt: vi.fn(),
-}))
-
-function makeDb(): Database.Database {
+function makeStore(): AdvisoryStore {
   return {
-    transaction: vi.fn(() => vi.fn()),
-  } as unknown as Database.Database
+    getForPackage: vi.fn().mockReturnValue([]),
+    upsert: vi.fn(),
+    upsertFromFullSync: vi.fn(),
+    count: vi.fn().mockReturnValue(0),
+    pruneStale: vi.fn(),
+    getLastSyncedAt: vi.fn().mockReturnValue(null),
+    setLastSyncedAt: vi.fn(),
+    close: vi.fn(),
+  }
 }
 
 function makeEmptyFetch(): ReturnType<typeof vi.fn> {
@@ -24,7 +25,7 @@ function makeEmptyFetch(): ReturnType<typeof vi.fn> {
 
 beforeEach(() => {
   vi.unstubAllGlobals()
-  vi.mocked(setLastSyncedAt).mockReset()
+  vi.resetModules()
 })
 
 it('omits updated filter when since is undefined', async () => {
@@ -32,7 +33,7 @@ it('omits updated filter when since is undefined', async () => {
   vi.stubGlobal('fetch', mockFetch)
 
   const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
-  await syncGithubAdvisories(makeDb(), undefined)
+  await syncGithubAdvisories(makeStore(), undefined)
 
   const url = mockFetch.mock.calls[0][0] as string
   expect(url).not.toContain('updated=')
@@ -45,7 +46,7 @@ it('includes URL-encoded >= updated filter when since is provided', async () => 
   const since = new Date('2024-06-01').getTime()
 
   const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
-  await syncGithubAdvisories(makeDb(), since)
+  await syncGithubAdvisories(makeStore(), since)
 
   const url = mockFetch.mock.calls[0][0] as string
   expect(url).toContain('updated=%3E%3D2024-06-01T')
@@ -56,7 +57,7 @@ it('omits updated filter when since is non-finite (NaN or Infinity)', async () =
   vi.stubGlobal('fetch', mockFetch)
 
   const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
-  await syncGithubAdvisories(makeDb(), NaN)
+  await syncGithubAdvisories(makeStore(), NaN)
 
   const url = mockFetch.mock.calls[0][0] as string
   expect(url).not.toContain('updated=')
@@ -67,11 +68,12 @@ it('calls setLastSyncedAt when since provided, even if 0 items imported', async 
   vi.stubGlobal('fetch', mockFetch)
 
   const since = new Date('2024-06-01').getTime()
+  const store = makeStore()
 
   const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
-  await syncGithubAdvisories(makeDb(), since)
+  await syncGithubAdvisories(store, since)
 
-  expect(vi.mocked(setLastSyncedAt)).toHaveBeenCalled()
+  expect(vi.mocked(store.setLastSyncedAt)).toHaveBeenCalled()
 })
 
 it('bumps setLastSyncedAt even when incremental sync returns zero advisories', async () => {
@@ -79,14 +81,15 @@ it('bumps setLastSyncedAt even when incremental sync returns zero advisories', a
   vi.stubGlobal('fetch', mockFetch)
 
   const since = 12345
+  const store = makeStore()
 
   const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
-  await syncGithubAdvisories(makeDb(), since)
+  await syncGithubAdvisories(store, since)
 
-  expect(vi.mocked(setLastSyncedAt)).toHaveBeenCalled()
-  const calledWith = vi.mocked(setLastSyncedAt).mock.calls[0]
-  expect(calledWith[1]).toBe('github')
-  expect(calledWith[2]).toBeGreaterThan(since)
+  expect(vi.mocked(store.setLastSyncedAt)).toHaveBeenCalled()
+  const calledWith = vi.mocked(store.setLastSyncedAt).mock.calls[0]
+  expect(calledWith[0]).toBe('github')
+  expect(calledWith[1]).toBeGreaterThan(since)
 })
 
 describe('fetchWithRetry', () => {
@@ -171,8 +174,9 @@ it('preserves last-synced cursor when fetch throws mid-pagination', async () => 
 
   vi.stubGlobal('fetch', mockFetch)
 
+  const store = makeStore()
   const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
-  await expect(syncGithubAdvisories(makeDb(), 12345)).rejects.toThrow('network error on page 2')
+  await expect(syncGithubAdvisories(store, 12345)).rejects.toThrow('network error on page 2')
 
-  expect(vi.mocked(setLastSyncedAt)).not.toHaveBeenCalled()
+  expect(vi.mocked(store.setLastSyncedAt)).not.toHaveBeenCalled()
 })

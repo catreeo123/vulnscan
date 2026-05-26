@@ -26,3 +26,14 @@ export type Finding = {
   via?: string
   advisory: Advisory
 }
+
+export type AdvisoryStore = {
+  getForPackage(name: string): Advisory[]
+  upsert(advisory: Advisory): void
+  upsertFromFullSync(advisory: Advisory, fullSyncStartedAt: number): void
+  count(): number
+  pruneStale(fullSyncStartedAt: number, gracePeriodMs: number): void
+  getLastSyncedAt(source: string): number | null
+  setLastSyncedAt(source: string, ts: number): void
+  close(): void
+}
