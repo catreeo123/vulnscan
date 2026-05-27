@@ -144,8 +144,42 @@ describe('renderHelp content — via run()', () => {
     expect(out).toMatch(/--dir/)
   })
 
+  it('update --help includes environment and force re-sync note', async () => {
+    const out = await captureStdout(() => run(['update', '--help']))
+    expect(out).toMatch(/force a full re-sync/)
+    expect(out).toMatch(/VULNSCAN_DB_PATH/)
+  })
+
   it('skill --help includes install subcommand', async () => {
     const out = await captureStdout(() => run(['skill', '--help']))
     expect(out).toMatch(/install/)
+  })
+})
+
+describe('run() — version command', () => {
+  it('--version outputs the package version and returns 0', async () => {
+    const written: string[] = []
+    const orig = process.stdout.write.bind(process.stdout)
+    ;(process.stdout as any).write = (chunk: unknown) => { written.push(String(chunk)); return true }
+    const code = await run(['--version'])
+    ;(process.stdout as any).write = orig
+    expect(code).toBe(0)
+    expect(written.join('')).toMatch(/^\d+\.\d+\.\d+/)
+  })
+})
+
+describe('run() — unknown command', () => {
+  it('returns 1 for an unrecognised command', async () => {
+    const code = await run(['__definitely_not_a_command__'])
+    expect(code).toBe(1)
+  })
+
+  it('writes "Unknown command" to stderr for an unrecognised command', async () => {
+    const written: string[] = []
+    const orig = process.stderr.write.bind(process.stderr)
+    ;(process.stderr as any).write = (chunk: unknown) => { written.push(String(chunk)); return true }
+    await run(['__definitely_not_a_command__'])
+    ;(process.stderr as any).write = orig
+    expect(written.join('')).toMatch(/Unknown command/)
   })
 })

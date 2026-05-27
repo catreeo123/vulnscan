@@ -1,6 +1,22 @@
 import { vi, it, describe, expect, beforeEach } from 'vitest'
+import AdmZip from 'adm-zip'
 import type { AdvisoryStore } from './types.js'
 import { eventsToRanges, osvEntryToAdvisories } from './osv-sync.js'
+
+function makeZipResponse(entries: { name: string; content: string }[]): Response {
+  const zip = new AdmZip()
+  for (const { name, content } of entries) {
+    zip.addFile(name, Buffer.from(content, 'utf8'))
+  }
+  const buf = zip.toBuffer()
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(buf))
+      controller.close()
+    },
+  })
+  return new Response(stream, { status: 200 })
+}
 
 // Two-entry OSV ZIP fixture (base64-encoded)
 const FIXTURE_ZIP_B64 =
@@ -159,6 +175,60 @@ it('M1: does not call res.arrayBuffer() — streaming path is taken', async () =
   // Should complete without error (arrayBuffer spy would throw if called)
   await expect(syncOsv(store)).resolves.not.toThrow()
   expect(arrayBufferSpy).not.toHaveBeenCalled()
+})
+
+// ─── Error branch coverage: JSON parse failure, no-npm-affected skip, per-row upsert failure ───
+
+const validNpmEntry = JSON.stringify({
+  id: 'GHSA-aaaa-bbbb-cccc',
+  summary: 'Test advisory',
+  affected: [{
+    package: { ecosystem: 'npm', name: 'some-pkg' },
+    ranges: [{ type: 'SEMVER', events: [{ introduced: '1.0.0' }, { fixed: '2.0.0' }] }],
+  }],
+})
+
+it('increments skipped for ZIP entries containing invalid JSON', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+    makeZipResponse([{ name: 'bad.json', content: '{not valid json{{' }])
+  ))
+  const store = makeStore()
+  const { syncOsv } = await import('./osv-sync.js')
+  const result = await syncOsv(store)
+  expect(result.skipped).toBe(1)
+  expect(result.imported).toBe(0)
+  expect(vi.mocked(store.upsertFromFullSync)).not.toHaveBeenCalled()
+})
+
+it('increments skipped for entries with no npm-ecosystem affected packages', async () => {
+  const goEntry = JSON.stringify({
+    id: 'GHSA-go-only-0001',
+    summary: 'Go only',
+    affected: [{
+      package: { ecosystem: 'Go', name: 'some/go/pkg' },
+      ranges: [{ type: 'SEMVER', events: [{ introduced: '1.0.0' }] }],
+    }],
+  })
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+    makeZipResponse([{ name: 'go-only.json', content: goEntry }])
+  ))
+  const store = makeStore()
+  const { syncOsv } = await import('./osv-sync.js')
+  const result = await syncOsv(store)
+  expect(result.skipped).toBe(1)
+  expect(result.imported).toBe(0)
+})
+
+it('recovers from per-row upsert failure: decrements imported, increments skipped', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+    makeZipResponse([{ name: 'valid.json', content: validNpmEntry }])
+  ))
+  const store = makeStore()
+  vi.mocked(store.upsertFromFullSync).mockImplementation(() => { throw new Error('constraint failed') })
+  const { syncOsv } = await import('./osv-sync.js')
+  const result = await syncOsv(store)
+  expect(result.imported).toBe(0)
+  expect(result.skipped).toBe(1)
 })
 
 // ─── canonicalId selection: GHSA alias preferred over CVE fallback (issue #15) ───
