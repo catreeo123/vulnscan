@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.8] — 2026-05-27
+
+### Chores
+
+- Added `repository` field to `package.json` so GitHub links the published package to the repository.
+
 ## [0.2.7] — 2026-05-27
 
 ### Fixes

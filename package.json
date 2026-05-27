@@ -1,10 +1,14 @@
 {
   "name": "@catreeo123/vulnscan",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Scan Node.js dependencies for vulnerabilities missing from npm audit",
   "type": "module",
   "bin": {
     "vulnscan": "dist/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/catreeo123/vulnscan.git"
   },
   "publishConfig": {
     "access": "public",
