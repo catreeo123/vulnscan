@@ -8,10 +8,9 @@ import { openDb, upsertAdvisory, setLastSyncedAt } from './local-db.js'
 
 // Resolve paths relative to this test file so that worktree runs use the worktree CLI
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const PACKAGE_ROOT = '/home/win/Yolo/Build/security-scan-cli'
 const PROJECT_ROOT = join(__dirname, '..')
 const CLI_PATH = join(__dirname, 'cli.ts')
-const TSX_BIN = join(PACKAGE_ROOT, 'node_modules/.bin/tsx')
+const TSX_BIN = join(PROJECT_ROOT, 'node_modules/.bin/tsx')
 
 function spawnCli(args: string[], dbPath: string, opts: { cwd?: string } = {}) {
   return spawnSync(
