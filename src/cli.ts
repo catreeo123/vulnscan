@@ -16,6 +16,14 @@ import type { ScanWarning } from './warnings.js'
 export async function run(argv: string[]): Promise<number> {
   const parsed = parseArgs(argv)
 
+  if (parsed.command === 'version') {
+    const { createRequire } = await import('node:module')
+    const require = createRequire(import.meta.url)
+    const { version } = require('../package.json') as { version: string }
+    process.stdout.write(version + '\n')
+    return 0
+  }
+
   if (parsed.command === 'help') {
     process.stdout.write(renderHelp(parsed.topic))
     return 0
@@ -101,7 +109,7 @@ export async function run(argv: string[]): Promise<number> {
   return 1
 }
 
-function renderHelp(topic?: 'scan' | 'check' | 'update'): string {
+function renderHelp(topic?: 'scan' | 'check' | 'update' | 'skill'): string {
   if (topic === 'scan') {
     return `vulnscan scan — scan a project's package-lock.json for known vulnerabilities
 
@@ -156,6 +164,16 @@ Options:
   --help, -h         Show this message
 `
   }
+  if (topic === 'skill') {
+    return `vulnscan skill — manage the /vulnscan Claude Code skill
+
+Usage:
+  vulnscan skill install         Copy SKILL.md to ~/.claude/skills/vulnscan/
+
+Options:
+  --help, -h         Show this message
+`
+  }
   return `vulnscan — npm dependency vulnerability scanner
 
 Usage:
@@ -195,20 +213,25 @@ function getFailOn(failOnArg: string | null, projectDir = '.'): Severity[] {
   return config.failOn
 }
 
+const SEVERITY_ORDER: Severity[] = ['low', 'moderate', 'high', 'critical']
+
 function shouldFail(findings: Finding[], failOn: Severity[]): boolean {
-  return findings.some((f) => failOn.includes(f.advisory.severity))
+  const indices = failOn.map((s) => SEVERITY_ORDER.indexOf(s)).filter((i) => i >= 0)
+  if (indices.length === 0) return false
+  const threshold = Math.min(...indices)
+  return findings.some((f) => SEVERITY_ORDER.indexOf(f.advisory.severity) >= threshold)
 }
 
 /**
  * Exit code matrix (priority: incomplete > findings > clean):
  *   2 — at least one incomplete warning (scan may have missed packages; findings are untrustworthy)
- *   1 — no incomplete warnings, but findings ≥ failOn severity
+ *   1 — no incomplete warnings, but at least one finding is at or above the failOn floor
  *   0 — clean (no qualifying findings AND no incomplete warnings)
  *
  * Exit 2 takes priority over exit 1 because an incomplete scan cannot be trusted:
  * the missing packages may have had worse findings than the ones reported.
  */
-function computeExitCode(findings: Finding[], warnings: ScanWarning[], failOn: Severity[]): number {
+export function computeExitCode(findings: Finding[], warnings: ScanWarning[], failOn: Severity[]): number {
   if (hasIncomplete(warnings)) return 2
   if (shouldFail(findings, failOn)) return 1
   return 0

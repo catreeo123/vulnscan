@@ -1,18 +1,23 @@
-export type HelpTopic = 'scan' | 'check' | 'update'
+export type HelpTopic = 'scan' | 'check' | 'update' | 'skill'
 
 export type ParsedArgs =
   | { command: 'scan'; projectDir: string; format: string; failOn: string | null; noSync: boolean }
   | { command: 'check'; target: string; format: string; failOn: string | null; dir: string | null; noSync: boolean }
   | { command: 'update' }
   | { command: 'skill-install' }
+  | { command: 'version' }
   | { command: 'help'; topic?: HelpTopic }
   | { command: 'unknown'; raw: string | undefined }
 
 const KNOWN_FLAGS = new Set(['--format', '--fail-on', '--dir'])
 const KNOWN_BOOLEAN_FLAGS = new Set(['--offline', '--no-sync'])
-const KNOWN_COMMANDS: ReadonlySet<HelpTopic> = new Set(['scan', 'check', 'update'])
+const KNOWN_COMMANDS: ReadonlySet<HelpTopic> = new Set(['scan', 'check', 'update', 'skill'])
 
 export function parseArgs(argv: string[]): ParsedArgs {
+  if (argv.includes('--version') || argv.includes('-V')) {
+    return { command: 'version' }
+  }
+
   if (argv.includes('--help') || argv.includes('-h')) {
     const topic = argv.find((a): a is HelpTopic => KNOWN_COMMANDS.has(a as HelpTopic))
     return topic ? { command: 'help', topic } : { command: 'help' }

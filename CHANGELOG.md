@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0] — 2026-05-27
+
+### New features
+
+- **`--version` / `-V` flag** — print the installed semver version and exit 0. Closes #19.
+- **`vulnscan skill --help`** — `skill` subcommand now has its own help page instead of falling through to global help. Closes #21.
+
+### Fixes
+
+- **`--fail-on` threshold semantics** — `--fail-on low` now fails on `low`, `moderate`, `high`, and `critical` (floor semantics, matching `npm audit --audit-level`). Previously it was exact-match only. The default config `["critical", "high"]` is unaffected. Closes #20.
+
 ## [0.1.1] — 2026-05-27
 
 ### Refactors

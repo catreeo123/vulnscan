@@ -185,6 +185,26 @@ describe('parseArgs', () => {
   })
 })
 
+describe('parseArgs — --version flag (#19)', () => {
+  it('--version returns version command', () => {
+    expect(parseArgs(['--version'])).toEqual({ command: 'version' })
+  })
+
+  it('-V returns version command', () => {
+    expect(parseArgs(['-V'])).toEqual({ command: 'version' })
+  })
+})
+
+describe('parseArgs — skill --help (#21)', () => {
+  it('skill --help returns help with skill topic', () => {
+    expect(parseArgs(['skill', '--help'])).toEqual({ command: 'help', topic: 'skill' })
+  })
+
+  it('skill install --help returns help with skill topic', () => {
+    expect(parseArgs(['skill', 'install', '--help'])).toEqual({ command: 'help', topic: 'skill' })
+  })
+})
+
 describe('parseArgs — orphan flag warning (S5)', () => {
   afterEach(() => {
     vi.restoreAllMocks()
