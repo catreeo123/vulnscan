@@ -249,6 +249,37 @@ it('malware pass stores advisories with type=mal; reviewed pass stores type=cve'
 
 // ── D8: MAX_PAGES warning ────────────────────────────────────────────────────
 
+it('does NOT call setLastSyncedAt when page limit is hit', async () => {
+  const makePagedFetch = (pageCount: number) => {
+    const mockFn = vi.fn()
+    for (let i = 0; i < pageCount; i++) {
+      const isLast = i === pageCount - 1
+      mockFn.mockImplementationOnce(() =>
+        Promise.resolve(
+          new Response(JSON.stringify([{ ghsa_id: `GHSA-${i}-0000-0000`, cve_id: null, severity: 'high', html_url: `https://github.com/advisories/GHSA-${i}`, summary: 'test', vulnerabilities: [] }]), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              ...(isLast ? {} : { link: `<https://api.github.com/advisories?page=${i + 2}>; rel="next"` }),
+            },
+          }),
+        ),
+      )
+    }
+    return mockFn
+  }
+
+  // maxPages: 2, but there are 3 pages (reviewed pass triggers cap)
+  const mockFetch = makePagedFetch(3)
+  vi.stubGlobal('fetch', mockFetch)
+
+  const store = makeStore()
+  const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+  await syncGithubAdvisories(store, undefined, undefined, { maxPages: 2 })
+
+  expect(vi.mocked(store.setLastSyncedAt)).not.toHaveBeenCalledWith('github', expect.any(Number))
+})
+
 it('returns incomplete warning when maxPages cap is reached', async () => {
   const makePagedFetch = (pageCount: number) => {
     const mockFn = vi.fn()

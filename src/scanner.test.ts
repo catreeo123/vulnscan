@@ -170,6 +170,34 @@ describe('runScan', () => {
     ).rejects.toThrow(/is not valid JSON/)
   })
 
+  it('depCount excludes local workspace deps (fix: count only non-local deps)', async () => {
+    const lockfileContent = JSON.stringify({
+      lockfileVersion: 2,
+      packages: {
+        '': { workspaces: ['packages/*'] },
+        'packages/pkg-a': { version: '1.0.0', name: 'pkg-a' },
+        'packages/pkg-b': { version: '1.0.0', name: 'pkg-b' },
+        'packages/pkg-c': { version: '1.0.0', name: 'pkg-c' },
+        'node_modules/lodash': { version: '4.17.21', resolved: 'https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz' },
+        'node_modules/express': { version: '4.18.0', resolved: 'https://registry.npmjs.org/express/-/express-4.18.0.tgz' },
+        'node_modules/axios': { version: '1.0.0', resolved: 'https://registry.npmjs.org/axios/-/axios-1.0.0.tgz' },
+        'node_modules/react': { version: '18.0.0', resolved: 'https://registry.npmjs.org/react/-/react-18.0.0.tgz' },
+        'node_modules/typescript': { version: '5.0.0', resolved: 'https://registry.npmjs.org/typescript/-/typescript-5.0.0.tgz' },
+        'node_modules/vitest': { version: '1.0.0', resolved: 'https://registry.npmjs.org/vitest/-/vitest-1.0.0.tgz' },
+        'node_modules/prettier': { version: '3.0.0', resolved: 'https://registry.npmjs.org/prettier/-/prettier-3.0.0.tgz' },
+        'node_modules/eslint': { version: '8.0.0', resolved: 'https://registry.npmjs.org/eslint/-/eslint-8.0.0.tgz' },
+        'node_modules/zod': { version: '3.0.0', resolved: 'https://registry.npmjs.org/zod/-/zod-3.0.0.tgz' },
+        'node_modules/chalk': { version: '5.0.0', resolved: 'https://registry.npmjs.org/chalk/-/chalk-5.0.0.tgz' },
+      },
+    })
+
+    const result = await runScan({ lockfileContent, store, config: baseConfig, noSync: true })
+
+    // 3 local workspace deps (pkg-a, pkg-b, pkg-c) should NOT be counted
+    // 10 external deps should be counted
+    expect(result.depCount).toBe(10)
+  })
+
   it('TEST 3: warnings from parser surface in result', async () => {
     // v1 lockfile — no `packages` key
     const v1Lockfile = JSON.stringify({

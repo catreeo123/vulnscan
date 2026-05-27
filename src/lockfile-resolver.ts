@@ -47,7 +47,13 @@ export function resolveEntry(
   const isUnderNodeModules = path.includes('node_modules/')
 
   // git-source dep — no dep, incomplete warning
-  if (pkg.resolved?.startsWith('git+') || pkg.resolved?.startsWith('git://')) {
+  if (
+    pkg.resolved?.startsWith('git+') ||
+    pkg.resolved?.startsWith('git://') ||
+    pkg.resolved?.startsWith('github:') ||
+    pkg.resolved?.startsWith('bitbucket:') ||
+    pkg.resolved?.startsWith('gitlab:')
+  ) {
     const parts = path.split('node_modules/')
     const name = parts[parts.length - 1]
     return { warning: incomplete(`${name}: git-sourced dep skipped (cannot check version range)`) }

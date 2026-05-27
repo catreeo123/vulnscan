@@ -116,6 +116,36 @@ describe('resolveEntry', () => {
     expect(result.warning?.class).toBe('incomplete')
   })
 
+  // ── github:/bitbucket:/gitlab: shorthand git deps ───────────────────────────
+  it('github: resolved prefix: emits no dep, incomplete warning', () => {
+    const result = resolveEntry(
+      'node_modules/my-gh-pkg',
+      { version: '1.0.0', resolved: 'github:org/repo#abc123' },
+    )
+    expect(result.dep).toBeUndefined()
+    expect(result.warning).toBeDefined()
+    expect(result.warning?.class).toBe('incomplete')
+    expect(result.warning?.message).toMatch(/my-gh-pkg/)
+  })
+
+  it('bitbucket: resolved prefix: emits no dep, incomplete warning', () => {
+    const result = resolveEntry(
+      'node_modules/my-bb-pkg',
+      { version: '1.0.0', resolved: 'bitbucket:org/repo#abc123' },
+    )
+    expect(result.dep).toBeUndefined()
+    expect(result.warning?.class).toBe('incomplete')
+  })
+
+  it('gitlab: resolved prefix: emits no dep, incomplete warning', () => {
+    const result = resolveEntry(
+      'node_modules/my-gl-pkg',
+      { version: '1.0.0', resolved: 'gitlab:org/repo#abc123' },
+    )
+    expect(result.dep).toBeUndefined()
+    expect(result.warning?.class).toBe('incomplete')
+  })
+
   // ── No version → skip silently ──────────────────────────────────────────────
   it('entry without version: returns empty result', () => {
     const result = resolveEntry('node_modules/virtual', {} as PackageEntry)

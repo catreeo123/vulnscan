@@ -47,6 +47,7 @@ export async function syncGithubAdvisories(
   let imported = 0
   let skipped = 0
   const warnings: ScanWarning[] = []
+  let hitPageLimit = false
 
   process.stderr.write('GitHub Advisory: paginating npm advisories...\n')
 
@@ -70,6 +71,7 @@ export async function syncGithubAdvisories(
       if (page > maxPages) {
         process.stderr.write(`\nGitHub Advisory: reached page limit (${maxPages}), stopping\n`)
         warnings.push(incomplete(`GitHub Advisory sync reached page limit (${maxPages}); results may be incomplete`))
+        hitPageLimit = true
         break
       }
 
@@ -97,7 +99,10 @@ export async function syncGithubAdvisories(
 
   // Only bump the cursor on clean exit of both passes. A mid-pagination throw
   // preserves the cursor so the next sync retries from the same point.
-  store.setLastSyncedAt('github', Date.now())
+  // Also skip advancing when page limit was hit so the next run retries.
+  if (!hitPageLimit) {
+    store.setLastSyncedAt('github', Date.now())
+  }
   process.stderr.write(`GitHub Advisory: imported ${imported} advisories (${skipped} items skipped)\n`)
   return { imported, skipped, warnings }
 }
@@ -122,7 +127,7 @@ function ghAdvisoryToAdvisories(
   const advisories = npmVulns
     .filter((v) => v.package.name && v.vulnerable_version_range)
     .map((v): Advisory => {
-      const ghsaMatch = item.html_url.match(/GHSA-[a-z0-9]+-[a-z0-9]+-[a-z0-9]+/i)
+      const ghsaMatch = item.html_url.match(/GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}/i)
       const canonicalId = ghsaMatch ? ghsaMatch[0].toUpperCase() : item.ghsa_id.toUpperCase()
       return {
         id,

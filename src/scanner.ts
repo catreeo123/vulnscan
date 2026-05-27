@@ -89,7 +89,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
     findings: deduped,
     warnings: [...parseWarnings, ...extraWarnings],
     advisoryCount: count,
-    depCount: deps.length,
+    depCount: deps.filter((d) => !d.local).length,
   }
 }
 
