@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1] — 2026-05-27
+
+### Refactors
+
+- **Sync injection seam** — `ScanInput` and `CheckInput` accept `sync?: SyncFn`. Tests inject stubs directly; no `vi.mock(sync-orchestrator)` needed. Production default unchanged (`syncIfStale`).
+- **`run(argv): Promise<number>`** — `cli.ts` exports `run()` returning an exit code instead of calling `process.exit()` inline. Preserves stdout-flush invariant (M1). Module-level wrapper sets `process.exitCode`.
+- **`stalenessMs` on `Config`** — `loadConfig` now computes `stalenessMs` from `stalenessHours` once at the config boundary. Callers use `config.stalenessMs` directly; the `* 60 * 60 * 1000` conversion no longer appears at call sites.
+
 ## [0.1.0] — 2026-05-27
 
 ### Breaking changes
