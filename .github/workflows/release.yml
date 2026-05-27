@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://npm.pkg.github.com'
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run build
+
+      - name: Publish to GitHub Packages
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub release
+        run: gh release create ${{ github.ref_name }} --generate-notes --title "Release ${{ github.ref_name }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run full advisory sync
+        run: node dist/cli.js update
+        env:
+          VULNSCAN_DB_PATH: /tmp/vulnscan-ci/db.sqlite
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VULNSCAN_NO_BOOTSTRAP: 1
+
+      - name: Create db-latest release if missing
+        run: gh release view db-latest || gh release create db-latest --title "Advisory Database (latest)" --notes "Refreshed daily by CI"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Gzip the database
+        run: gzip -k /tmp/vulnscan-ci/db.sqlite && mv /tmp/vulnscan-ci/db.sqlite.gz db.sqlite.gz
+
+      - name: Upload DB to db-latest release
+        run: gh release upload db-latest db.sqlite.gz --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
