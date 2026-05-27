@@ -37,9 +37,6 @@ export async function syncGithubAdvisories(
 
   let imported = 0
   let skipped = 0
-  let page = 0
-
-  const upsert = (advisory: Advisory) => store.upsert(advisory)
 
   process.stderr.write('GitHub Advisory: paginating npm advisories...\n')
 
@@ -47,41 +44,47 @@ export async function syncGithubAdvisories(
     since !== undefined && Number.isFinite(since)
       ? `&updated=${encodeURIComponent('>=')}${new Date(since).toISOString()}`
       : ''
-  let nextUrl: string | null = `${GITHUB_API}/advisories?type=reviewed&ecosystem=npm&per_page=${PER_PAGE}${sinceFilter}`
 
-  while (nextUrl) {
-    page++
-    if (page > MAX_PAGES) {
-      process.stderr.write(`\nGitHub Advisory: reached page limit (${MAX_PAGES}), stopping\n`)
-      break
-    }
+  const passes: Array<{ type: 'reviewed' | 'malware'; advisoryType: Advisory['type'] }> = [
+    { type: 'reviewed', advisoryType: 'cve' },
+    { type: 'malware', advisoryType: 'mal' },
+  ]
 
-    const res = await fetchWithRetry(nextUrl, headers)
-    const items = (await res.json()) as GhAdvisory[]
+  for (const pass of passes) {
+    let page = 0
+    let nextUrl: string | null =
+      `${GITHUB_API}/advisories?type=${pass.type}&ecosystem=npm&per_page=${PER_PAGE}${sinceFilter}`
 
-    if (!Array.isArray(items) || items.length === 0) break
-
-    for (const item of items) {
-      const advisories = ghAdvisoryToAdvisories(item)
-      for (const advisory of advisories) {
-        upsert(advisory)
-        imported++
+    while (nextUrl) {
+      page++
+      if (page > MAX_PAGES) {
+        process.stderr.write(`\nGitHub Advisory: reached page limit (${MAX_PAGES}), stopping\n`)
+        break
       }
-      if (advisories.length === 0) skipped++
+
+      const res = await fetchWithRetry(nextUrl, headers)
+      const items = (await res.json()) as GhAdvisory[]
+
+      if (!Array.isArray(items) || items.length === 0) break
+
+      for (const item of items) {
+        const advisories = ghAdvisoryToAdvisories(item, pass.advisoryType)
+        for (const advisory of advisories) {
+          store.upsert(advisory)
+          imported++
+        }
+        if (advisories.length === 0) skipped++
+      }
+
+      process.stderr.write(`GitHub Advisory: page ${page} (${pass.type}) — ${imported} imported\r`)
+      if (onProgress) onProgress(imported)
+
+      nextUrl = parseLinkNext(res.headers.get('link'))
     }
-
-    process.stderr.write(`GitHub Advisory: page ${page} — ${imported} imported\r`)
-    if (onProgress) onProgress(imported)
-
-    nextUrl = parseLinkNext(res.headers.get('link'))
   }
 
-  // Only bump the cursor on clean loop exit. A mid-pagination throw preserves
-  // the cursor so the next sync retries from the same point. The empty-response
-  // case (items.length===0 on first or later page) is treated as success and
-  // bumps the cursor — this means a transient API issue returning empty is
-  // indistinguishable from genuine "no new advisories" and accepted as residual
-  // risk (see code-review finding C6).
+  // Only bump the cursor on clean exit of both passes. A mid-pagination throw
+  // preserves the cursor so the next sync retries from the same point.
   store.setLastSyncedAt('github', Date.now())
   process.stderr.write(`GitHub Advisory: imported ${imported} advisories (${skipped} items skipped)\n`)
   return { imported, skipped }
@@ -93,7 +96,7 @@ function parseLinkNext(link: string | null): string | null {
   return match ? match[1] : null
 }
 
-function ghAdvisoryToAdvisories(item: GhAdvisory): Advisory[] {
+function ghAdvisoryToAdvisories(item: GhAdvisory, advisoryType: Advisory['type']): Advisory[] {
   const npmVulns = item.vulnerabilities.filter((v) => v.package.ecosystem === 'npm')
   if (npmVulns.length === 0) return []
 
@@ -108,7 +111,7 @@ function ghAdvisoryToAdvisories(item: GhAdvisory): Advisory[] {
       return {
         id,
         canonicalId,
-        type: 'cve',
+        type: advisoryType,
         packageName: v.package.name,
         ranges: parseGhRange(v.vulnerable_version_range!),
         severity,

@@ -15,11 +15,13 @@ function makeStore(): AdvisoryStore {
 }
 
 function makeEmptyFetch(): ReturnType<typeof vi.fn> {
-  return vi.fn().mockResolvedValue(
-    new Response(JSON.stringify([]), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    }),
+  return vi.fn().mockImplementation(() =>
+    Promise.resolve(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ),
   )
 }
 
@@ -179,4 +181,68 @@ it('preserves last-synced cursor when fetch throws mid-pagination', async () => 
   await expect(syncGithubAdvisories(store, 12345)).rejects.toThrow('network error on page 2')
 
   expect(vi.mocked(store.setLastSyncedAt)).not.toHaveBeenCalled()
+})
+
+it('fetches both type=reviewed and type=malware URLs', async () => {
+  const mockFetch = makeEmptyFetch()
+  vi.stubGlobal('fetch', mockFetch)
+
+  const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+  await syncGithubAdvisories(makeStore(), undefined)
+
+  const urls = mockFetch.mock.calls.map((c) => c[0] as string)
+  expect(urls.some((u) => u.includes('type=reviewed'))).toBe(true)
+  expect(urls.some((u) => u.includes('type=malware'))).toBe(true)
+})
+
+it('malware pass stores advisories with type=mal; reviewed pass stores type=cve', async () => {
+  const makeItem = (ghsaId: string) => ({
+    ghsa_id: ghsaId,
+    cve_id: null,
+    severity: 'high',
+    html_url: `https://github.com/advisories/${ghsaId}`,
+    summary: 'Test advisory',
+    vulnerabilities: [
+      {
+        package: { ecosystem: 'npm', name: 'test-pkg' },
+        vulnerable_version_range: '< 1.0.0',
+        first_patched_version: '1.0.0',
+      },
+    ],
+  })
+
+  const reviewedItem = makeItem('GHSA-aaaa-bbbb-cccc')
+  const malwareItem = makeItem('GHSA-dddd-eeee-ffff')
+
+  const mockFetch = vi
+    .fn()
+    // reviewed pass — single page, no next link
+    .mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(JSON.stringify([reviewedItem]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+    // malware pass — single page, no next link
+    .mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(JSON.stringify([malwareItem]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+
+  vi.stubGlobal('fetch', mockFetch)
+
+  const store = makeStore()
+  const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+  await syncGithubAdvisories(store, undefined)
+
+  const upsertCalls = vi.mocked(store.upsert).mock.calls
+  const types = upsertCalls.map((c) => c[0].type)
+  expect(types).toContain('cve')
+  expect(types).toContain('mal')
 })
