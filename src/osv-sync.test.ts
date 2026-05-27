@@ -102,6 +102,42 @@ it('I4: onProgress callback receives { parsed, total } object shape', async () =
   expect(lastCall).toHaveProperty('total', 2)
 })
 
+// ─── D6T: OSV entry with no severity metadata escalates to 'high' and emits warning ───
+
+// Fixture: single entry with no database_specific.severity and no top-level severity
+const NO_SEVERITY_ZIP_B64 =
+  'UEsDBBQAAAgIAGA9u1zKSdJOsAAAAOkAAAAaAAAAR0hTQS10ZXN0LW5vLXNldi0wMDAxLmpzb24tzbGOwjAQBNBfiaZ2kLnSHQWChgZONIjCSjbBAtuRdwlYVv4dJaCtRjujV+BaGOz2p00txFKHWDONtdZ6DQX7cJaJYS5XBX56b1OGwT+xVLYdHceUq5eTWxVixTRScpLnXddRI9TCXAoG29xtTzAF1ETOLORhEAYPhWA9wWCxh3v/8zEpJBv6hS6QPMyl0/Zw3h6hQCMF+b5ckBTbZzNb0JhUQefeS/pb6ZXGdF3uA1BLAQIUAxQAAAgIAGA9u1zKSdJOsAAAAOkAAAAaAAAAAAAAAAAAAACkgQAAAABHSFNBLXRlc3Qtbm8tc2V2LTAwMDEuanNvblBLBQYAAAAAAQABAEgAAADoAAAAAAA='
+
+function makeNoSeverityResponse(): Response {
+  const buf = Buffer.from(NO_SEVERITY_ZIP_B64, 'base64')
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(buf))
+      controller.close()
+    },
+  })
+  return new Response(stream, { status: 200 })
+}
+
+it('D6T: OSV entry with no severity escalates to high and returns informational warning', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeNoSeverityResponse()))
+
+  const store = makeStore()
+  const { syncOsv } = await import('./osv-sync.js')
+  const result = await syncOsv(store)
+
+  // The advisory should have been upserted with severity 'high'
+  expect(vi.mocked(store.upsertFromFullSync)).toHaveBeenCalledTimes(1)
+  const advisory = vi.mocked(store.upsertFromFullSync).mock.calls[0][0]
+  expect(advisory.severity).toBe('high')
+  expect(advisory.packageName).toBe('test-pkg-no-sev')
+
+  // An informational warning should be returned
+  expect(result.warnings).toHaveLength(1)
+  expect(result.warnings[0].class).toBe('informational')
+  expect(result.warnings[0].message).toContain('GHSA-test-no-sev-0001')
+})
+
 // ─── M1: streaming path — res.arrayBuffer() is NOT called ───
 
 it('M1: does not call res.arrayBuffer() — streaming path is taken', async () => {
