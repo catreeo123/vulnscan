@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.7] — 2026-05-27
+
+### Fixes
+
+- **`npm pack` now always ships fresh compiled JS** — added `"prepare": "npm run build"` so pack/publish always rebuilds `dist/` first. Without this, `0.2.6` was initially packed with stale compiled output that didn't include the 422 fix.
+
 ## [0.2.6] — 2026-05-27
 
 ### Fixes
