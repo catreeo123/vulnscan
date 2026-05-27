@@ -125,6 +125,18 @@ const origWrite = process.stderr.write.bind(process.stderr)
 ;(process.stderr as any).write = origWrite
 ```
 
+## Versioning
+
+After every fix or feature: bump `version` in `package.json` before committing.
+
+| Change type | Bump |
+|-------------|------|
+| Bug fix, refactor, docs | patch (`0.1.0` → `0.1.1`) |
+| New feature, new flag, new command | minor (`0.1.0` → `0.2.0`) |
+| Breaking CLI or JSON output change | major (`0.1.0` → `1.0.0`) |
+
+Update `CHANGELOG.md` with a matching entry under the new version heading.
+
 ## Deferred Work
 
 Open issues tracked in GitHub Issues (`catreeo123/vulnscan`). As of v0.1.0 + #18, all implementation issues are shipped. Remaining deferred: #09 (SQLite PRAGMA tuning — `journal_size_limit`, `cache_size`, `mmap_size`).
