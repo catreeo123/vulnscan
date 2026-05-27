@@ -25,15 +25,6 @@ export async function syncIfStale(
 
   if (!osvStale && !ghStale) return []
 
-  // Double-check: a parallel process may have refreshed cursors while we were deciding.
-  const osvLastAgain = store.getLastSyncedAt('osv')
-  const ghLastAgain = store.getLastSyncedAt('github')
-  const nowAgain = Date.now()
-  const osvStillStale = osvStale && (osvLastAgain === null || nowAgain < osvLastAgain || nowAgain - osvLastAgain > stalenessMs)
-  const ghStillStale = ghStale && (ghLastAgain === null || nowAgain < ghLastAgain || nowAgain - ghLastAgain > stalenessMs)
-
-  if (!osvStillStale && !ghStillStale) return []
-
   const warnings: ScanWarning[] = []
 
   if (osvSkew) {
@@ -42,6 +33,15 @@ export async function syncIfStale(
   if (ghSkew) {
     warnings.push(informational('clock skew detected: GitHub advisory database was last synced in the future; forcing re-sync'))
   }
+
+  // Double-check: a parallel process may have refreshed cursors while we were deciding.
+  const osvLastAgain = store.getLastSyncedAt('osv')
+  const ghLastAgain = store.getLastSyncedAt('github')
+  const nowAgain = Date.now()
+  const osvStillStale = osvStale && (osvLastAgain === null || nowAgain < osvLastAgain || nowAgain - osvLastAgain > stalenessMs)
+  const ghStillStale = ghStale && (ghLastAgain === null || nowAgain < ghLastAgain || nowAgain - ghLastAgain > stalenessMs)
+
+  if (!osvStillStale && !ghStillStale) return warnings
 
   if (osvStillStale) {
     const { fullSyncStartedAt, warnings: osvWarnings } = await syncOsv(store)

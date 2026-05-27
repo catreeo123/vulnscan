@@ -172,3 +172,40 @@ describe('D5T: double-checked staleness', () => {
     expect(vi.mocked(syncOsv)).toHaveBeenCalledTimes(1)
   })
 })
+
+// ─── D8: clock-skew warning emitted even when double-check short-circuits ───
+
+describe('D8: clock-skew warning survives double-check short-circuit', () => {
+  it('emits clock-skew warning when osv skew detected but parallel process already synced', async () => {
+    const { syncOsv } = await import('./osv-sync.js')
+    const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+    vi.mocked(syncOsv).mockClear()
+    vi.mocked(syncGithubAdvisories).mockClear()
+
+    const future = Date.now() + 10 * 60 * 60 * 1000 // 10h in the future (triggers osvSkew=true)
+    const fresh = Date.now() - 60_000               // 1 min ago (double-check sees fresh)
+
+    // Calls in syncIfStale: 1=osv-init, 2=gh-init, 3=osv-double-check, 4=gh-double-check
+    // osv-init returns future → osvSkew=true, osvStale=true
+    // gh-init returns fresh → ghSkew=false, ghStale=false
+    // osv-double-check returns fresh → osvStillStale=false
+    // → double-check short-circuit fires; no sync should run
+    let callCount = 0
+    const store = makeStore({
+      getLastSyncedAt: vi.fn().mockImplementation(() => {
+        callCount++
+        if (callCount === 1) return future // osv initial: skew detected
+        return fresh                        // gh initial + all double-checks: fresh
+      }),
+    })
+
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+    const warnings = await syncIfStale(store)
+
+    // No sync should have been triggered (parallel process already refreshed)
+    expect(vi.mocked(syncOsv)).not.toHaveBeenCalled()
+    expect(vi.mocked(syncGithubAdvisories)).not.toHaveBeenCalled()
+    // Clock-skew warning must still be emitted
+    expect(warnings.some((w) => w.class === 'informational' && w.message.includes('clock skew'))).toBe(true)
+  })
+})
