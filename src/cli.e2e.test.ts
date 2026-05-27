@@ -1,13 +1,17 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { openDb, upsertAdvisory, setLastSyncedAt } from './local-db.js'
 
-const PROJECT_ROOT = '/home/win/Yolo/Build/security-scan-cli'
-const CLI_PATH = join(PROJECT_ROOT, 'src/cli.ts')
-const TSX_BIN = join(PROJECT_ROOT, 'node_modules/.bin/tsx')
+// Resolve paths relative to this test file so that worktree runs use the worktree CLI
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const PACKAGE_ROOT = '/home/win/Yolo/Build/security-scan-cli'
+const PROJECT_ROOT = join(__dirname, '..')
+const CLI_PATH = join(__dirname, 'cli.ts')
+const TSX_BIN = join(PACKAGE_ROOT, 'node_modules/.bin/tsx')
 
 function spawnCli(args: string[], dbPath: string, opts: { cwd?: string } = {}) {
   return spawnSync(
@@ -937,8 +941,8 @@ describe('vulnscan scan — D1 exit code matrix', () => {
     }
   })
 
-  // Cell: findings + incomplete (exit 1, findings override)
-  it('exits 1 when findings exist even alongside incomplete warnings', () => {
+  // Cell: findings + incomplete (exit 2, incomplete takes priority)
+  it('exits 2 when findings exist alongside incomplete warnings (incomplete takes priority)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'vulnscan-d1-both-'))
     const dbp = join(dir, 'both.sqlite')
     try {
@@ -961,9 +965,9 @@ describe('vulnscan scan — D1 exit code matrix', () => {
       setLastSyncedAt(db, 'github', Date.now())
       db.close()
 
-      // findings (high) + incomplete (git-dep) → exit 1 (findings override)
+      // findings (high) + incomplete (git-dep) → exit 2 (incomplete takes priority over findings)
       const result = spawnCli(['scan', dir, '--fail-on', 'high'], dbp)
-      expect(result.status).toBe(1)
+      expect(result.status).toBe(2)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -983,9 +987,9 @@ describe('vulnscan check — D1 exit code matrix', () => {
     expect(result.status).toBe(1)
   })
 
-  // Cell: findings + incomplete → exit 1 (findings override)
-  it('exits 1 when findings exist, confirming findings override incomplete warnings', () => {
-    // The seeded DB has a high advisory for lodash. Findings take priority over any warnings.
+  // Cell: findings only (exit 1) — check command does not produce incomplete warnings for registry packages
+  it('exits 1 when findings exist and there are no incomplete warnings', () => {
+    // The seeded DB has a high advisory for lodash. No git-sourced deps → no incomplete warning.
     const result = spawnCli(['check', 'lodash@4.17.20', '--fail-on', 'high'], dbPath)
     expect(result.status).toBe(1)
   })

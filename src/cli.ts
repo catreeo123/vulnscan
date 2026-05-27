@@ -115,10 +115,11 @@ Options:
   --offline, --no-sync  Skip advisory database sync (use existing local data)
   --help, -h         Show this message
 
-Exit codes:
-  0   Clean — no findings at or above the fail-on threshold, no incomplete warnings
-  1   Findings — one or more findings meet the fail-on severity threshold
-  2   Incomplete — scan could not cover all packages (e.g. git-sourced deps, v1 lockfile)
+Exit codes (priority: 2 > 1 > 0):
+  0   Clean — no findings at or above the fail-on threshold, and no incomplete warnings
+  1   Findings — one or more findings meet the fail-on severity threshold (no incomplete warnings)
+  2   Incomplete — scan could not cover all packages (e.g. git-sourced deps, v1 lockfile);
+      exit 2 takes priority over exit 1 because the missing packages may have undetected findings
 `
   }
   if (topic === 'check') {
@@ -134,10 +135,11 @@ Options:
   --offline, --no-sync  Skip advisory database sync (use existing local data)
   --help, -h         Show this message
 
-Exit codes:
-  0   Clean — no findings at or above the fail-on threshold, no incomplete warnings
-  1   Findings — one or more findings meet the fail-on severity threshold
-  2   Incomplete — check could not fully cover the package (e.g. incomplete advisory sync)
+Exit codes (priority: 2 > 1 > 0):
+  0   Clean — no findings at or above the fail-on threshold, and no incomplete warnings
+  1   Findings — one or more findings meet the fail-on severity threshold (no incomplete warnings)
+  2   Incomplete — check could not fully cover the package (e.g. incomplete advisory sync);
+      exit 2 takes priority over exit 1 because the missing coverage may hide worse findings
 `
   }
   if (topic === 'update') {
@@ -170,10 +172,11 @@ Options:
   --offline, --no-sync  Skip advisory database sync (use existing local data)
   --help, -h         Show this message
 
-Exit codes:
-  0   Clean — no findings at or above the fail-on threshold, no incomplete warnings
-  1   Findings — one or more findings meet the fail-on severity threshold
-  2   Incomplete — scan could not cover all packages; check pipelines accordingly
+Exit codes (priority: 2 > 1 > 0):
+  0   Clean — no findings at or above the fail-on threshold, and no incomplete warnings
+  1   Findings — one or more findings meet the fail-on severity threshold (no incomplete warnings)
+  2   Incomplete — scan could not cover all packages; exit 2 takes priority over exit 1
+      because the missing packages may have undetected findings
 `
 }
 
@@ -196,14 +199,17 @@ function shouldFail(findings: Finding[], failOn: Severity[]): boolean {
 }
 
 /**
- * Exit code matrix:
- *   1 — findings ≥ failOn severity (overrides 2)
- *   2 — no qualifying findings, but at least one incomplete warning
- *   0 — clean
+ * Exit code matrix (priority: incomplete > findings > clean):
+ *   2 — at least one incomplete warning (scan may have missed packages; findings are untrustworthy)
+ *   1 — no incomplete warnings, but findings ≥ failOn severity
+ *   0 — clean (no qualifying findings AND no incomplete warnings)
+ *
+ * Exit 2 takes priority over exit 1 because an incomplete scan cannot be trusted:
+ * the missing packages may have had worse findings than the ones reported.
  */
 function computeExitCode(findings: Finding[], warnings: ScanWarning[], failOn: Severity[]): number {
-  if (shouldFail(findings, failOn)) return 1
   if (hasIncomplete(warnings)) return 2
+  if (shouldFail(findings, failOn)) return 1
   return 0
 }
 
