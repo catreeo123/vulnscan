@@ -54,6 +54,19 @@ it('includes URL-encoded >= updated filter when since is provided', async () => 
   expect(url).toContain('updated=%3E%3D2024-06-01T')
 })
 
+it('updated filter date has no milliseconds (GitHub API rejects .000Z)', async () => {
+  const mockFetch = makeEmptyFetch()
+  vi.stubGlobal('fetch', mockFetch)
+
+  const since = new Date('2024-06-01T12:34:56.789Z').getTime()
+
+  const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+  await syncGithubAdvisories(makeStore(), since)
+
+  const url = decodeURIComponent(mockFetch.mock.calls[0][0] as string)
+  expect(url).not.toMatch(/updated=.*\.\d{3}Z/)
+})
+
 it('omits updated filter when since is non-finite (NaN or Infinity)', async () => {
   const mockFetch = makeEmptyFetch()
   vi.stubGlobal('fetch', mockFetch)

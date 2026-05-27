@@ -53,7 +53,7 @@ export async function syncGithubAdvisories(
 
   const sinceFilter =
     since !== undefined && Number.isFinite(since)
-      ? `&updated=${encodeURIComponent('>=')}${new Date(since).toISOString()}`
+      ? `&updated=${encodeURIComponent('>=')}${new Date(since).toISOString().replace(/\.\d{3}Z$/, 'Z')}`
       : ''
 
   const passes: Array<{ type: 'reviewed' | 'malware'; advisoryType: Advisory['type'] }> = [

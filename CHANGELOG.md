@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.6] — 2026-05-27
+
+### Fixes
+
+- **GitHub Advisory incremental sync no longer 422s** — `toISOString()` emits milliseconds (e.g. `2025-01-01T00:00:00.000Z`) but the GitHub `/advisories?updated=` filter rejects them with `422 Unprocessable Entity`. The `.000Z` suffix is now stripped to produce the `...T00:00:00Z` form the API expects. Without this fix, any incremental sync (i.e. after the first full sync stored a cursor) silently fell back to OSV-only data.
+
 ## [0.2.5] — 2026-05-27
 
 ### Fixes
