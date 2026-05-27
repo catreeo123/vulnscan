@@ -1,6 +1,6 @@
 import { vi, it, describe, expect, beforeEach } from 'vitest'
 import type { AdvisoryStore } from './types.js'
-import { eventsToRanges } from './osv-sync.js'
+import { eventsToRanges, osvEntryToAdvisories } from './osv-sync.js'
 
 // Two-entry OSV ZIP fixture (base64-encoded)
 const FIXTURE_ZIP_B64 =
@@ -159,4 +159,40 @@ it('M1: does not call res.arrayBuffer() — streaming path is taken', async () =
   // Should complete without error (arrayBuffer spy would throw if called)
   await expect(syncOsv(store)).resolves.not.toThrow()
   expect(arrayBufferSpy).not.toHaveBeenCalled()
+})
+
+// ─── canonicalId selection: GHSA alias preferred over CVE fallback (issue #15) ───
+
+describe('osvEntryToAdvisories canonicalId', () => {
+  const baseAffected = {
+    package: { ecosystem: 'npm', name: 'some-pkg' },
+    ranges: [{ type: 'SEMVER', events: [{ introduced: '1.0.0' }, { fixed: '1.0.1' }] }],
+  }
+
+  it('uses GHSA alias as canonicalId when entry has both CVE and GHSA in aliases', () => {
+    const entry = {
+      id: 'CVE-2021-23337',
+      aliases: ['GHSA-35jh-r3h4-6jhm', 'CVE-2021-23337'],
+      summary: 'Prototype Pollution',
+      affected: [baseAffected],
+    }
+    const { advisories } = osvEntryToAdvisories(entry)
+    expect(advisories).toHaveLength(1)
+    expect(advisories[0].canonicalId).toBe('GHSA-35JH-R3H4-6JHM')
+  })
+
+  it('falls back to CVE id as canonicalId when no GHSA alias is present (known limitation)', () => {
+    // Known limitation: OSV entries with only a CVE id and no GHSA alias produce a CVE-based
+    // canonicalId. If the same advisory exists in GitHub Advisory (which uses GHSA ids), the
+    // deduplicator will treat them as distinct findings. See comment in osv-sync.ts.
+    const entry = {
+      id: 'CVE-2021-99999',
+      aliases: ['CVE-2021-99999'],
+      summary: 'Some CVE-only advisory',
+      affected: [baseAffected],
+    }
+    const { advisories } = osvEntryToAdvisories(entry)
+    expect(advisories).toHaveLength(1)
+    expect(advisories[0].canonicalId).toBe('CVE-2021-99999')
+  })
 })

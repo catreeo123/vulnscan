@@ -98,7 +98,7 @@ export async function syncOsv(
   }
 }
 
-function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[]; warnings: ScanWarning[] } {
+export function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[]; warnings: ScanWarning[] } {
   const allAffected = entry.affected?.filter(
     (a) => a.package.ecosystem === 'npm' && a.package.name,
   ) ?? []
@@ -120,6 +120,12 @@ function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[]; warnin
 
     const url = `https://osv.dev/vulnerability/${entry.id}`
     const ghsaMatch = entry.id.match(/^GHSA-/i) ? entry.id : entry.aliases?.find((a) => a.match(/^GHSA-/i))
+    // GHSA ids are the stable cross-source identifier; prefer them when present in entry.id or aliases.
+    // Known limitation: OSV entries with no GHSA alias (e.g. CVE-only entries not mirrored to GitHub
+    // Advisory) will use the CVE id as canonicalId. If the same advisory exists in GitHub Advisory,
+    // it will carry a GHSA canonicalId, causing the deduplicator to treat them as distinct findings.
+    // A cross-reference lookup would fix this but is out of scope — the advisory databases eventually
+    // converge and GHSA entries in OSV carry the GHSA alias, so in practice this gap is rare.
     const canonicalId = ghsaMatch ? ghsaMatch.toUpperCase() : id
     const { severity, warning } = mapSeverity({
       label: affected.database_specific?.severity ?? entry.database_specific?.severity,
