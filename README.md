@@ -7,9 +7,13 @@ Unlike `npm audit`, vulnscan works offline after the first sync and supports fin
 ## Installation
 
 ```bash
-npm install
-npm run build
-npm link   # makes `vulnscan` available globally
+npm install -g @catreeo123/vulnscan
+```
+
+Or from source:
+
+```bash
+npm install && npm run build && npm link
 ```
 
 ## Usage
@@ -27,6 +31,9 @@ vulnscan check lodash@4.17.20
 # Force a fresh advisory sync
 vulnscan update
 
+# Register the /vulnscan Claude Code skill
+vulnscan skill install
+
 # Show help
 vulnscan --help
 ```
@@ -36,14 +43,16 @@ vulnscan --help
 | Flag | Description |
 |------|-------------|
 | `--format json\|table` | Output format (default: `table`) |
-| `--fail-on <csv>` | Severities that exit 1, e.g. `critical,high` (overrides `.vulnscanrc`) |
-| `--dir <path>` | Directory for `.vulnscanrc` lookup (check command only) |
+| `--fail-on <csv>` | Severities that exit non-zero, e.g. `critical,high` (overrides `.vulnscanrc`) |
+| `--offline`, `--no-sync` | Skip advisory sync — use existing local data |
+| `--dir <path>` | Directory for `.vulnscanrc` lookup (`check` only) |
 | `--help`, `-h` | Show usage |
 
 ### Exit codes
 
-- `0` — no findings matching `--fail-on` severities
-- `1` — one or more findings at a `--fail-on` severity
+- `0` — clean: no findings at or above `--fail-on` threshold, no incomplete warnings
+- `1` — findings: one or more findings meet the `--fail-on` severity threshold
+- `2` — incomplete: advisory data may be missing (e.g. sync failed, git-sourced deps skipped); takes priority over exit 1
 
 ### JSON output
 
@@ -51,12 +60,20 @@ vulnscan --help
 
 ```json
 {
+  "schemaVersion": "1",
   "findings": [
     {
       "name": "lodash",
       "version": "4.17.20",
       "via": "webpack",
-      "advisory": { "id": "CVE-2021-23337", "type": "cve", "severity": "high", "title": "...", "url": "..." },
+      "advisory": {
+        "id": "CVE-2021-23337",
+        "canonicalId": "GHSA-35jh-r3h4-6jhm",
+        "type": "cve",
+        "severity": "high",
+        "title": "Command Injection in lodash",
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-23337"
+      },
       "fix": "4.17.21"
     }
   ],
