@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { safeClose, computeExitCode } from './cli.js'
+import { safeClose, computeExitCode, run } from './cli.js'
 import type { Finding } from './types.js'
+import { incomplete, informational } from './warnings.js'
 import type { ScanWarning } from './warnings.js'
 
 function finding(severity: 'critical' | 'high' | 'moderate' | 'low'): Finding {
@@ -39,6 +40,37 @@ describe('computeExitCode — threshold semantics (#20)', () => {
     // ['critical', 'high'] → floor is 'high'; moderate should not trigger
     expect(computeExitCode([finding('moderate')], noWarnings, ['critical', 'high'])).toBe(0)
   })
+
+  // GAP #1: incomplete warning must beat exit 1 (priority: 2 > 1 > 0)
+  it('exits 2 when qualifying finding AND incomplete warning present (2 beats 1)', () => {
+    expect(computeExitCode([finding('critical')], [incomplete('git dep skipped')], ['critical'])).toBe(2)
+  })
+
+  it('exits 2 for incomplete even with no findings (data untrustworthy)', () => {
+    expect(computeExitCode([], [incomplete('git dep skipped')], ['high'])).toBe(2)
+  })
+
+  it('exits 1 when only informational warning and qualifying finding (informational does not override)', () => {
+    expect(computeExitCode([finding('high')], [informational('db slightly stale')], ['high'])).toBe(1)
+  })
+
+  // GAP #2: empty failOn — shouldFail short-circuits on empty indices
+  it('exits 0 with empty failOn array even with critical findings', () => {
+    expect(computeExitCode([finding('critical')], noWarnings, [])).toBe(0)
+  })
+
+  // GAP #6: moderate boundary (middle of SEVERITY_ORDER)
+  it('exits 1 for moderate finding when failOn is moderate (at-threshold match)', () => {
+    expect(computeExitCode([finding('moderate')], noWarnings, ['moderate'])).toBe(1)
+  })
+
+  it('exits 0 for low finding when failOn is moderate (below threshold)', () => {
+    expect(computeExitCode([finding('low')], noWarnings, ['moderate'])).toBe(0)
+  })
+
+  it('exits 1 for critical finding when failOn is moderate (above threshold)', () => {
+    expect(computeExitCode([finding('critical')], noWarnings, ['moderate'])).toBe(1)
+  })
 })
 
 describe('safeClose', () => {
@@ -70,5 +102,50 @@ describe('safeClose', () => {
     const mockDb = { close: closeSpy } as any
     safeClose(mockDb)
     expect(closeSpy).toHaveBeenCalledOnce()
+  })
+})
+
+// GAP #5: renderHelp content contract — pure string function, zero tests before this
+// Tested via run() since renderHelp is not exported; help branch has no DB or network calls
+describe('renderHelp content — via run()', () => {
+  async function captureStdout(fn: () => Promise<unknown>): Promise<string> {
+    const written: string[] = []
+    const orig = process.stdout.write.bind(process.stdout)
+    ;(process.stdout as any).write = (chunk: unknown) => { written.push(String(chunk)); return true }
+    try {
+      await fn()
+    } finally {
+      ;(process.stdout as any).write = orig
+    }
+    return written.join('')
+  }
+
+  it('global --help lists all four subcommands and returns 0', async () => {
+    const code = await run(['--help'])
+    expect(code).toBe(0)
+  })
+
+  it('global --help lists scan, check, update, and skill', async () => {
+    const out = await captureStdout(() => run(['--help']))
+    expect(out).toMatch(/\[scan\]/)     // scan is default command shown as [scan]
+    expect(out).toMatch(/vulnscan check/)
+    expect(out).toMatch(/vulnscan update/)
+    expect(out).toMatch(/vulnscan skill/)
+  })
+
+  it('scan --help includes --fail-on option and exit code priority note', async () => {
+    const out = await captureStdout(() => run(['scan', '--help']))
+    expect(out).toMatch(/--fail-on/)
+    expect(out).toMatch(/exit 2 takes priority/)
+  })
+
+  it('check --help includes --dir option', async () => {
+    const out = await captureStdout(() => run(['check', '--help']))
+    expect(out).toMatch(/--dir/)
+  })
+
+  it('skill --help includes install subcommand', async () => {
+    const out = await captureStdout(() => run(['skill', '--help']))
+    expect(out).toMatch(/install/)
   })
 })

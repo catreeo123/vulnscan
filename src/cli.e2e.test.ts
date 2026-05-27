@@ -114,6 +114,14 @@ describe('vulnscan scan (e2e)', () => {
     expect(Array.isArray(parsed.warnings)).toBe(true)
     expect(parsed.findings[0]).toMatchObject({ name: 'lodash', version: '4.17.20' })
   })
+
+  it('exits 1 on --format json when findings meet fail-on threshold', () => {
+    const result = spawnCli(['scan', tmpDir, '--format', 'json', '--fail-on', 'high'], dbPath)
+    expect(result.status).toBe(1)
+    const parsed = JSON.parse(result.stdout)
+    expect(parsed.findings.length).toBeGreaterThan(0)
+  })
+
 })
 
 // ── Slice 1: Clean project ────────────────────────────────────────────────────
@@ -220,6 +228,29 @@ describe('vulnscan check — summary line', () => {
   it('stdout is clean JSON in --format json mode', () => {
     const result = spawnCli(['check', 'lodash@4.17.20', '--format', 'json'], dbPath)
     expect(() => JSON.parse(result.stdout)).not.toThrow()
+  })
+
+  // GAP #3: exit code must be asserted, not just JSON parseable
+  it('exits 1 on check --format json when findings meet fail-on threshold', () => {
+    const result = spawnCli(['check', 'lodash@4.17.20', '--format', 'json', '--fail-on', 'high'], dbPath)
+    expect(result.status).toBe(1)
+    const parsed = JSON.parse(result.stdout)
+    expect(parsed.findings.length).toBeGreaterThan(0)
+  })
+
+  // GAP #10: schemaVersion must be first key and finding shape must match skill contract
+  it('check --format json has schemaVersion as first key with correct finding shape', () => {
+    const result = spawnCli(['check', 'lodash@4.17.20', '--format', 'json'], dbPath)
+    const parsed = JSON.parse(result.stdout)
+    expect(Object.keys(parsed)[0]).toBe('schemaVersion')
+    expect(parsed.schemaVersion).toBe('1')
+    expect(parsed.findings[0]).toMatchObject({
+      name: 'lodash',
+      advisory: expect.objectContaining({
+        severity: expect.any(String),
+        canonicalId: expect.any(String),
+      }),
+    })
   })
 })
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.2] — 2026-05-27
+
+### Tests
+
+- **`computeExitCode` — incomplete priority** — new unit tests lock the exit-code priority invariant: incomplete warning beats qualifying findings (exit 2 > exit 1). Covers gap where a future refactor could silently invert the guard order.
+- **`computeExitCode` — edge cases** — empty `failOn` array exits 0; `moderate` at-threshold and below-threshold boundaries; informational-only warning does not override exit 1.
+- **`renderHelp` content contract** — five unit tests via `run(['--help', topic])` pin that each help topic contains required option names and exit-code notes. Previously `renderHelp` had zero content tests.
+- **`--format json` exit code** — e2e tests now assert `result.status` (not just JSON parseability) for both `scan` and `check`. Catches the silent-exit-0 failure mode where findings are returned but the process exits clean.
+- **`check --format json` schema** — asserts `schemaVersion` is the first key and that finding shape matches the skill consumer contract.
+
 ## [0.2.1] — 2026-05-27
 
 ### Fixes
