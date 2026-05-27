@@ -1020,3 +1020,58 @@ describe('vulnscan --help — D1 exit codes documented', () => {
     expect(result.stdout).toMatch(/\b2\b/)
   })
 })
+
+// ── Issue #19: --version / -V flag ───────────────────────────────────────────
+
+describe('vulnscan --version (#19)', () => {
+  it('--version prints semver string and exits 0', () => {
+    const result = spawnCli(['--version'], dbPath)
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(result.stderr).toBe('')
+  })
+
+  it('-V is equivalent to --version', () => {
+    const result = spawnCli(['-V'], dbPath)
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/)
+  })
+})
+
+// ── Issue #21: vulnscan skill --help routing ──────────────────────────────────
+
+describe('vulnscan skill --help (#21)', () => {
+  it('skill --help shows skill-specific usage and exits 0', () => {
+    const result = spawnCli(['skill', '--help'], dbPath)
+    expect(result.status).toBe(0)
+    expect(result.stdout).toMatch(/vulnscan skill/)
+    expect(result.stdout).toMatch(/install/)
+    expect(result.stderr).toBe('')
+  })
+
+  it('skill install --help also shows skill help', () => {
+    const result = spawnCli(['skill', 'install', '--help'], dbPath)
+    expect(result.status).toBe(0)
+    expect(result.stdout).toMatch(/vulnscan skill/)
+  })
+})
+
+// ── Issue #20: --fail-on floor threshold at binary level ─────────────────────
+// Shared DB has a high lodash advisory. high >= low → exit 1; high < critical → exit 0.
+
+describe('vulnscan check — --fail-on floor threshold (#20)', () => {
+  it('exits 1 for high finding when --fail-on low (high is above the floor)', () => {
+    const result = spawnCli(['check', 'lodash@4.17.20', '--fail-on', 'low'], dbPath)
+    expect(result.status).toBe(1)
+  })
+
+  it('exits 0 for high finding when --fail-on critical (high is below the floor)', () => {
+    const result = spawnCli(['check', 'lodash@4.17.20', '--fail-on', 'critical'], dbPath)
+    expect(result.status).toBe(0)
+  })
+
+  it('exits 1 for high finding when --fail-on moderate (high is above the floor)', () => {
+    const result = spawnCli(['check', 'lodash@4.17.20', '--fail-on', 'moderate'], dbPath)
+    expect(result.status).toBe(1)
+  })
+})
