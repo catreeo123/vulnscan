@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.5] — 2026-05-27
+
+### Fixes
+
+- **Supply Chain Signals now detected** — `osv-sync.ts` previously discarded every OSV MAL-* advisory (OpenSSF Malicious Packages) because those entries use `affected.versions` (exact version list) instead of `affected.ranges` (semver ranges). The `semverRanges.length === 0` guard caused a silent `continue` before any advisory was stored, so vulnscan downloaded malware data but never detected anything. Fix 1: after computing semver ranges from `affected.ranges`, if the result is empty and `affected.versions` is present, synthesize a point-range `{ introduced: v, lastAffected: v }` per valid semver version. Invalid non-semver version strings are skipped. Fix 2: MAL-* advisories always get `critical` severity regardless of the OSV severity label (which is often absent for malware entries). Closes #26.
+
 ## [0.2.4] — 2026-05-27
 
 ### Fixes

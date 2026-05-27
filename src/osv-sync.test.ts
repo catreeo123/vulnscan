@@ -330,3 +330,90 @@ describe('osvEntryToAdvisories canonicalId', () => {
     expect(advisories[0].canonicalId).toBe('CVE-2021-99999')
   })
 })
+
+// ─── MAL-* Supply Chain Signals: affected.versions synthesis (issue #26) ───
+
+describe('osvEntryToAdvisories MAL-* Supply Chain Signals', () => {
+  it('MAL-1: MAL-* entry with only affected.versions produces advisory with synthesized ranges', () => {
+    const entry = {
+      id: 'MAL-2024-1234',
+      summary: 'Malicious package: evil-pkg',
+      affected: [{
+        package: { ecosystem: 'npm', name: 'evil-pkg' },
+        versions: ['1.0.0', '1.0.1', '2.0.0'],
+      }],
+    }
+    const { advisories } = osvEntryToAdvisories(entry)
+    expect(advisories).toHaveLength(1)
+    expect(advisories[0].packageName).toBe('evil-pkg')
+    expect(advisories[0].ranges).toHaveLength(3)
+    expect(advisories[0].ranges).toContainEqual({ introduced: '1.0.0', lastAffected: '1.0.0' })
+    expect(advisories[0].ranges).toContainEqual({ introduced: '1.0.1', lastAffected: '1.0.1' })
+    expect(advisories[0].ranges).toContainEqual({ introduced: '2.0.0', lastAffected: '2.0.0' })
+  })
+
+  it('MAL-2: MAL-* advisory always gets critical severity regardless of OSV label', () => {
+    const entry = {
+      id: 'MAL-2024-5678',
+      summary: 'Malicious package: stealer',
+      affected: [{
+        package: { ecosystem: 'npm', name: 'stealer' },
+        versions: ['3.1.4'],
+        database_specific: { severity: 'LOW' },
+      }],
+    }
+    const { advisories } = osvEntryToAdvisories(entry)
+    expect(advisories).toHaveLength(1)
+    expect(advisories[0].severity).toBe('critical')
+  })
+
+  it('MAL-3: invalid semver in affected.versions is skipped — no false positive range', () => {
+    const entry = {
+      id: 'MAL-2024-9999',
+      summary: 'Malicious package: partly-invalid',
+      affected: [{
+        package: { ecosystem: 'npm', name: 'partly-invalid' },
+        versions: ['1.0.0', 'not-a-semver', '2.0.0'],
+      }],
+    }
+    const { advisories } = osvEntryToAdvisories(entry)
+    expect(advisories).toHaveLength(1)
+    // Only the two valid semver versions should produce ranges
+    expect(advisories[0].ranges).toHaveLength(2)
+    expect(advisories[0].ranges).toContainEqual({ introduced: '1.0.0', lastAffected: '1.0.0' })
+    expect(advisories[0].ranges).toContainEqual({ introduced: '2.0.0', lastAffected: '2.0.0' })
+  })
+
+  it('MAL-4: entry with both affected.versions AND affected.ranges uses ranges, not versions', () => {
+    const entry = {
+      id: 'MAL-2024-0001',
+      summary: 'Malicious package: has-both',
+      affected: [{
+        package: { ecosystem: 'npm', name: 'has-both' },
+        ranges: [{ type: 'SEMVER', events: [{ introduced: '1.0.0' }, { fixed: '1.1.0' }] }],
+        versions: ['1.0.0', '1.0.5'],
+      }],
+    }
+    const { advisories } = osvEntryToAdvisories(entry)
+    expect(advisories).toHaveLength(1)
+    // Ranges from affected.ranges: one entry { introduced: '1.0.0', fixed: '1.1.0' }
+    expect(advisories[0].ranges).toHaveLength(1)
+    expect(advisories[0].ranges[0]).toEqual({ introduced: '1.0.0', fixed: '1.1.0' })
+  })
+
+  it('MAL-5: existing CVE entry with only affected.ranges is unaffected by the fix', () => {
+    const entry = {
+      id: 'GHSA-aaaa-bbbb-cve1',
+      summary: 'Normal CVE advisory',
+      affected: [{
+        package: { ecosystem: 'npm', name: 'normal-pkg' },
+        ranges: [{ type: 'SEMVER', events: [{ introduced: '1.0.0' }, { fixed: '1.2.0' }] }],
+      }],
+    }
+    const { advisories } = osvEntryToAdvisories(entry)
+    expect(advisories).toHaveLength(1)
+    expect(advisories[0].ranges).toHaveLength(1)
+    expect(advisories[0].ranges[0]).toEqual({ introduced: '1.0.0', fixed: '1.2.0' })
+    expect(advisories[0].type).toBe('cve')
+  })
+})

@@ -1,4 +1,5 @@
 import AdmZip from 'adm-zip'
+import semver from 'semver'
 import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
 import { createWriteStream, mkdtempSync, rmSync } from 'node:fs'
@@ -16,6 +17,7 @@ type OsvRange = { type: string; events: OsvEvent[] }
 type OsvAffected = {
   package: { ecosystem: string; name: string }
   ranges?: OsvRange[]
+  versions?: string[]
   database_specific?: { severity?: string }
 }
 type OsvEntry = {
@@ -128,6 +130,16 @@ export function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[];
       .filter((r) => r.type === 'SEMVER')
       .flatMap((r) => eventsToRanges(r.events))
 
+    // Fix #26: MAL-* advisories use affected.versions (exact list) instead of affected.ranges.
+    // Synthesize a point-range per valid exact version so the matcher can detect them.
+    if (semverRanges.length === 0 && affected.versions?.length) {
+      for (const v of affected.versions) {
+        if (semver.valid(v)) {
+          semverRanges.push({ introduced: v, lastAffected: v })
+        }
+      }
+    }
+
     if (semverRanges.length === 0) continue
 
     const url = `https://osv.dev/vulnerability/${entry.id}`
@@ -144,13 +156,15 @@ export function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[];
       advisoryId: id,
     })
     if (warning) warnings.push(warning)
+    // Fix #26: MAL-* advisories are always critical — OSV often omits severity for malware entries.
+    const finalSeverity = type === 'mal' ? 'critical' : severity
     advisories.push({
       id,
       canonicalId,
       type,
       packageName: affected.package.name,
       ranges: semverRanges,
-      severity,
+      severity: finalSeverity,
       title: entry.summary ?? id,
       url,
     })
