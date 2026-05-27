@@ -68,45 +68,21 @@ afterAll(() => {
 
 describe('vulnscan scan (e2e)', () => {
   it('exits 1 when findings meet the fail-on threshold', () => {
-    const result = spawnSync(
-      'node',
-      ['--import', 'tsx', 'src/cli.ts', 'scan', tmpDir, '--fail-on', 'high,critical'],
-      {
-        cwd: '/home/win/Yolo/Build/security-scan-cli',
-        env: { ...process.env, VULNSCAN_DB_PATH: dbPath },
-        encoding: 'utf8',
-      },
-    )
+    const result = spawnCli(['scan', tmpDir, '--fail-on', 'high,critical'], dbPath)
 
     expect(result.status).toBe(1)
     expect(result.stdout + result.stderr).toMatch(/CVE-2021-23337/)
   })
 
   it('exits 0 when findings are below the fail-on threshold', () => {
-    const result = spawnSync(
-      'node',
-      ['--import', 'tsx', 'src/cli.ts', 'scan', tmpDir, '--fail-on', 'critical'],
-      {
-        cwd: '/home/win/Yolo/Build/security-scan-cli',
-        env: { ...process.env, VULNSCAN_DB_PATH: dbPath },
-        encoding: 'utf8',
-      },
-    )
+    const result = spawnCli(['scan', tmpDir, '--fail-on', 'critical'], dbPath)
 
     // high severity finding, but threshold is critical-only → exit 0
     expect(result.status).toBe(0)
   })
 
   it('outputs JSON when --format json is passed', () => {
-    const result = spawnSync(
-      'node',
-      ['--import', 'tsx', 'src/cli.ts', 'scan', tmpDir, '--format', 'json'],
-      {
-        cwd: '/home/win/Yolo/Build/security-scan-cli',
-        env: { ...process.env, VULNSCAN_DB_PATH: dbPath },
-        encoding: 'utf8',
-      },
-    )
+    const result = spawnCli(['scan', tmpDir, '--format', 'json'], dbPath)
 
     const parsed = JSON.parse(result.stdout)
     expect(Array.isArray(parsed.findings)).toBe(true)
