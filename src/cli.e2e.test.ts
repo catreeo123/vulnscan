@@ -1106,3 +1106,38 @@ describe('vulnscan check — --fail-on floor threshold (#20)', () => {
     expect(result.status).toBe(1)
   })
 })
+
+// ── Issue #27: second-run incremental sync (422 regression guard) ─────────────
+// Simulates "fresh device, second run": github cursor set to 25h ago so
+// syncIfStale fires an incremental sync with an `updated>=` filter.
+// Catches the .000Z milliseconds bug (422 from GitHub API) that shipped in
+// v0.2.5 and was fixed in v0.2.6.
+
+describe('vulnscan scan — second-run incremental GitHub sync (#27)', () => {
+  it('incremental sync with stale github cursor produces no 422 or sync-failed error', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vulnscan-second-run-'))
+    const dbp = join(dir, 'second-run.sqlite')
+    try {
+      writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({
+        name: 'test-project', lockfileVersion: 2,
+        packages: {
+          '': { dependencies: { 'some-pkg': '^1.0.0' } },
+          'node_modules/some-pkg': { version: '1.0.0', resolved: 'https://registry.npmjs.org/some-pkg/-/some-pkg-1.0.0.tgz' },
+        },
+      }))
+      const db = openDb(dbp)
+      // OSV fresh → skip OSV sync
+      // GitHub 25h stale → fires incremental sync with `updated>=<timestamp>` filter
+      setLastSyncedAt(db, 'osv', Date.now())
+      setLastSyncedAt(db, 'github', Date.now() - 25 * 60 * 60 * 1000)
+      db.close()
+
+      const result = spawnCli(['scan', dir], dbp)
+      expect(result.stderr).not.toMatch(/sync failed|422|Unprocessable/)
+      // exit 2 = incomplete warning from sync failure; must not happen
+      expect(result.status).not.toBe(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
+})

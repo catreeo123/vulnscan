@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm test
+
+  smoke:
+    name: pack-install smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Pack
+        run: npm pack
+      - name: Install from tgz
+        run: |
+          mkdir -p /tmp/vulnscan-smoke
+          npm install --prefix /tmp/vulnscan-smoke $(ls catreeo123-vulnscan-*.tgz)
+      - name: Run installed binary
+        run: /tmp/vulnscan-smoke/node_modules/.bin/vulnscan --help
+      - name: Verify version matches package.json
+        run: |
+          EXPECTED=$(node -p "require('./package.json').version")
+          ACTUAL=$(/tmp/vulnscan-smoke/node_modules/.bin/vulnscan --version)
+          echo "Expected: $EXPECTED  Actual: $ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED" ] || (echo "version mismatch" && exit 1)
