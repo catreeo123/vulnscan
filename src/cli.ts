@@ -13,31 +13,29 @@ import { hasIncomplete } from './warnings.js'
 import type { Severity, Finding } from './types.js'
 import type { ScanWarning } from './warnings.js'
 
-// M3: parseArgs is now called inside main(), not at module scope.
-
-async function main(): Promise<void> {
-  const parsed = parseArgs(process.argv.slice(2)) // M3 fix
+export async function run(argv: string[]): Promise<number> {
+  const parsed = parseArgs(argv)
 
   if (parsed.command === 'help') {
     process.stdout.write(renderHelp(parsed.topic))
-    return
+    return 0
   }
 
   if (parsed.command === 'update') {
     const store = openStore()
-    try { // B2 fix
+    try {
       await runSync(store)
     } finally {
       safeClose(store)
     }
-    return
+    return 0
   }
 
   if (parsed.command === 'check') {
     const pkgArg = parsed.target
     if (!pkgArg.includes('@')) {
       process.stderr.write('Usage: vulnscan check <package@version>\n')
-      process.exit(1)
+      return 1
     }
     const lastAt = pkgArg.lastIndexOf('@')
     const name = pkgArg.slice(0, lastAt)
@@ -56,12 +54,10 @@ async function main(): Promise<void> {
         process.stdout.write(renderGrouped(result.findings, result.warnings) + '\n')
       }
 
-      // M1 fix: use exitCode + return instead of process.exit after stdout writes
-      process.exitCode = computeExitCode(result.findings, result.warnings, getFailOn(parsed.failOn, parsed.dir ?? '.'))
+      return computeExitCode(result.findings, result.warnings, getFailOn(parsed.failOn, parsed.dir ?? '.'))
     } finally {
       safeClose(store)
     }
-    return
   }
 
   if (parsed.command === 'scan') {
@@ -69,11 +65,11 @@ async function main(): Promise<void> {
     const lockfilePath = resolve(projectDir, 'package-lock.json')
     if (!existsSync(lockfilePath)) {
       process.stderr.write(`Error: package-lock.json not found at ${lockfilePath}\n`)
-      process.exit(1)
+      return 1
     }
     await maybeBootstrap()
     const store = openStore()
-    try { // B2 fix
+    try {
       const config = loadConfig(projectDir)
       const lockfileContent = readFileSync(lockfilePath, 'utf8')
       const packageJsonPath = resolve(projectDir, 'package.json')
@@ -88,24 +84,21 @@ async function main(): Promise<void> {
         process.stdout.write(renderGrouped(result.findings, result.warnings) + '\n')
       }
 
-      const failOn = getFailOn(parsed.failOn, projectDir)
-      // M1 fix: use exitCode + return instead of process.exit after stdout writes
-      process.exitCode = computeExitCode(result.findings, result.warnings, failOn)
+      return computeExitCode(result.findings, result.warnings, getFailOn(parsed.failOn, projectDir))
     } finally {
       safeClose(store)
     }
-    return
   }
 
   if (parsed.command === 'skill-install') {
     const { installSkill } = await import('./skill-installer.js')
     installSkill()
-    return
+    return 0
   }
 
   const raw = parsed.command === 'unknown' ? (parsed.raw ?? '') : ''
   process.stderr.write(`Unknown command: ${raw}\nUsage: vulnscan [scan|check|update|skill] [options]\n`)
-  process.exit(1)
+  return 1
 }
 
 function renderHelp(topic?: 'scan' | 'check' | 'update'): string {
@@ -221,7 +214,9 @@ function computeExitCode(findings: Finding[], warnings: ScanWarning[], failOn: S
   return 0
 }
 
-main().catch((err) => {
-  process.stderr.write(`Error: ${scrubSecrets((err as Error).message)}\n`)
-  process.exit(1)
-})
+run(process.argv.slice(2))
+  .then((code) => { process.exitCode = code })
+  .catch((err: Error) => {
+    process.stderr.write(`Error: ${scrubSecrets(err.message)}\n`)
+    process.exitCode = 1
+  })

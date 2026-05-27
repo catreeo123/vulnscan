@@ -7,6 +7,8 @@ import { matchAffected } from './affected-range-matcher.js'
 import { deduplicate } from './deduplicator.js'
 import { syncIfStale } from './sync-orchestrator.js'
 
+type SyncFn = (store: AdvisoryStore, stalenessMs: number) => Promise<ScanWarning[]>
+
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 export type CheckInput = {
@@ -15,6 +17,7 @@ export type CheckInput = {
   store: AdvisoryStore
   config: Config
   noSync?: boolean
+  sync?: SyncFn
 }
 
 export type CheckResult = {
@@ -29,6 +32,7 @@ export type ScanInput = {
   store: AdvisoryStore
   config: Config
   noSync?: boolean
+  sync?: SyncFn
 }
 
 export type ScanResult = {
@@ -62,6 +66,7 @@ function offlineStalenessWarnings(store: AdvisoryStore): ScanWarning[] {
 
 export async function runScan(input: ScanInput): Promise<ScanResult> {
   const { lockfileContent, packageJsonContent, store, config, noSync } = input
+  const doSync = input.sync ?? syncIfStale
 
   const { deps, warnings: parseWarnings } = parseLockfile(lockfileContent, packageJsonContent)
 
@@ -69,7 +74,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   if (noSync) {
     extraWarnings.push(...offlineStalenessWarnings(store))
   } else {
-    const syncWarnings = await syncIfStale(store, config.stalenessHours * 60 * 60 * 1000)
+    const syncWarnings = await doSync(store, config.stalenessHours * 60 * 60 * 1000)
     extraWarnings.push(...syncWarnings)
   }
 
@@ -95,12 +100,13 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
 
 export async function checkPackage(input: CheckInput): Promise<CheckResult> {
   const { name, version, store, config, noSync } = input
+  const doSync = input.sync ?? syncIfStale
 
   const warnings: ScanWarning[] = []
   if (noSync) {
     warnings.push(...offlineStalenessWarnings(store))
   } else {
-    const syncWarnings = await syncIfStale(store, config.stalenessHours * 60 * 60 * 1000)
+    const syncWarnings = await doSync(store, config.stalenessHours * 60 * 60 * 1000)
     warnings.push(...syncWarnings)
   }
 

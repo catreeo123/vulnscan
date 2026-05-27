@@ -1,13 +1,6 @@
 import { vi, it, expect, describe, beforeEach } from 'vitest'
-import { syncIfStale } from './sync-orchestrator.js'
+import { runScan, checkPackage } from './scanner.js'
 import { InMemoryAdvisoryStore } from './advisory-store-memory.js'
-
-vi.mock('./sync-orchestrator.js', () => ({
-  syncIfStale: vi.fn().mockResolvedValue([]),
-}))
-
-// imported after mock is set up
-const { runScan, checkPackage } = await import('./scanner.js')
 
 let store: InMemoryAdvisoryStore
 
@@ -16,6 +9,7 @@ beforeEach(() => {
 })
 
 const baseConfig = { failOn: ['critical' as const], stalenessHours: 24 }
+const noopSync = async () => []
 
 // Lockfile with root-only entry (no real packages)
 const emptyLockfile = JSON.stringify({
@@ -36,13 +30,13 @@ describe('checkPackage', () => {
       url: 'https://github.com/advisories/GHSA-0000-0000-0C01',
     })
 
-    vi.mocked(syncIfStale).mockClear()
-    const result = await checkPackage({ name: 'express', version: '4.18.0', store, config: baseConfig })
+    const syncStub = vi.fn().mockResolvedValue([])
+    const result = await checkPackage({ name: 'express', version: '4.18.0', store, config: baseConfig, sync: syncStub })
 
     expect(result.findings).toHaveLength(1)
     expect(result.findings[0].name).toBe('express')
     expect(result.advisoryCount).toBe(1)
-    expect(syncIfStale).toHaveBeenCalledWith(store, baseConfig.stalenessHours * 60 * 60 * 1000)
+    expect(syncStub).toHaveBeenCalledWith(store, baseConfig.stalenessHours * 60 * 60 * 1000)
   })
 
   it('TEST C2: non-vulnerable version → no findings', async () => {
@@ -57,14 +51,14 @@ describe('checkPackage', () => {
       url: 'https://github.com/advisories/GHSA-0000-0000-0C02',
     })
 
-    const result = await checkPackage({ name: 'express', version: '4.19.1', store, config: baseConfig })
+    const result = await checkPackage({ name: 'express', version: '4.19.1', store, config: baseConfig, sync: noopSync })
 
     expect(result.findings).toHaveLength(0)
     expect(result.advisoryCount).toBe(1)
   })
 
   it('TEST C3: unknown package → no findings', async () => {
-    const result = await checkPackage({ name: 'some-unknown-pkg', version: '1.0.0', store, config: baseConfig })
+    const result = await checkPackage({ name: 'some-unknown-pkg', version: '1.0.0', store, config: baseConfig, sync: noopSync })
 
     expect(result.findings).toHaveLength(0)
     expect(result.advisoryCount).toBe(0)
@@ -75,15 +69,15 @@ describe('checkPackage', () => {
 
 describe('D5T: noSync flag skips syncIfStale', () => {
   it('runScan with noSync=true does not call syncIfStale', async () => {
-    vi.mocked(syncIfStale).mockClear()
-    await runScan({ lockfileContent: emptyLockfile, store, config: baseConfig, noSync: true })
-    expect(syncIfStale).not.toHaveBeenCalled()
+    const syncStub = vi.fn().mockResolvedValue([])
+    await runScan({ lockfileContent: emptyLockfile, store, config: baseConfig, noSync: true, sync: syncStub })
+    expect(syncStub).not.toHaveBeenCalled()
   })
 
   it('checkPackage with noSync=true does not call syncIfStale', async () => {
-    vi.mocked(syncIfStale).mockClear()
-    await checkPackage({ name: 'lodash', version: '4.17.20', store, config: baseConfig, noSync: true })
-    expect(syncIfStale).not.toHaveBeenCalled()
+    const syncStub = vi.fn().mockResolvedValue([])
+    await checkPackage({ name: 'lodash', version: '4.17.20', store, config: baseConfig, noSync: true, sync: syncStub })
+    expect(syncStub).not.toHaveBeenCalled()
   })
 
   it('runScan with noSync=true emits informational warning when cursors are null (never synced)', async () => {
@@ -129,7 +123,7 @@ describe('runScan', () => {
       url: 'https://github.com/advisories/GHSA-0000-0000-0001',
     })
 
-    const result = await runScan({ lockfileContent: emptyLockfile, store, config: baseConfig })
+    const result = await runScan({ lockfileContent: emptyLockfile, store, config: baseConfig, sync: noopSync })
 
     expect(result.findings).toHaveLength(0)
     expect(result.advisoryCount).toBe(1)
@@ -158,7 +152,7 @@ describe('runScan', () => {
       },
     })
 
-    const result = await runScan({ lockfileContent, store, config: baseConfig })
+    const result = await runScan({ lockfileContent, store, config: baseConfig, sync: noopSync })
 
     expect(result.findings).toHaveLength(1)
     expect(result.findings[0].name).toBe('lodash')
@@ -205,7 +199,7 @@ describe('runScan', () => {
       dependencies: { lodash: { version: '4.17.20' } },
     })
 
-    const result = await runScan({ lockfileContent: v1Lockfile, store, config: baseConfig })
+    const result = await runScan({ lockfileContent: v1Lockfile, store, config: baseConfig, sync: noopSync })
 
     expect(result.findings).toHaveLength(0)
     expect(result.warnings.some((w) => w.message.includes('v1'))).toBe(true)
