@@ -6,11 +6,13 @@ import type { Severity } from './types.js'
 export type Config = {
   failOn: Severity[]
   stalenessHours: number
+  stalenessMs: number
 }
 
 const DEFAULTS: Config = {
   failOn: ['critical', 'high'],
   stalenessHours: 24,
+  stalenessMs: 24 * 60 * 60 * 1000,
 }
 
 const VALID_SEVERITIES: Severity[] = ['critical', 'high', 'moderate', 'low']
@@ -49,9 +51,11 @@ export function loadConfig(projectDir: string): Config {
     try {
       const raw = readFileSync(loc, 'utf8')
       const parsed = JSON.parse(raw) as Record<string, unknown>
+      const stalenessHours = validateStalenessHours(parsed.stalenessHours)
       return {
         failOn: validateFailOn(parsed.failOn),
-        stalenessHours: validateStalenessHours(parsed.stalenessHours),
+        stalenessHours,
+        stalenessMs: stalenessHours * 60 * 60 * 1000,
       }
     } catch {
       // file not found or invalid JSON — try next location

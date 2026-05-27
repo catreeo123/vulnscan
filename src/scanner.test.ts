@@ -8,7 +8,7 @@ beforeEach(() => {
   store = new InMemoryAdvisoryStore()
 })
 
-const baseConfig = { failOn: ['critical' as const], stalenessHours: 24 }
+const baseConfig = { failOn: ['critical' as const], stalenessHours: 24, stalenessMs: 24 * 60 * 60 * 1000 }
 const noopSync = async () => []
 
 // Lockfile with root-only entry (no real packages)
@@ -36,7 +36,7 @@ describe('checkPackage', () => {
     expect(result.findings).toHaveLength(1)
     expect(result.findings[0].name).toBe('express')
     expect(result.advisoryCount).toBe(1)
-    expect(syncStub).toHaveBeenCalledWith(store, baseConfig.stalenessHours * 60 * 60 * 1000)
+    expect(syncStub).toHaveBeenCalledWith(store, baseConfig.stalenessMs)
   })
 
   it('TEST C2: non-vulnerable version → no findings', async () => {

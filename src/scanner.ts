@@ -74,7 +74,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   if (noSync) {
     extraWarnings.push(...offlineStalenessWarnings(store))
   } else {
-    const syncWarnings = await doSync(store, config.stalenessHours * 60 * 60 * 1000)
+    const syncWarnings = await doSync(store, config.stalenessMs)
     extraWarnings.push(...syncWarnings)
   }
 
@@ -106,7 +106,7 @@ export async function checkPackage(input: CheckInput): Promise<CheckResult> {
   if (noSync) {
     warnings.push(...offlineStalenessWarnings(store))
   } else {
-    const syncWarnings = await doSync(store, config.stalenessHours * 60 * 60 * 1000)
+    const syncWarnings = await doSync(store, config.stalenessMs)
     warnings.push(...syncWarnings)
   }
 
