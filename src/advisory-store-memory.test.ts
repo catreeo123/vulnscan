@@ -80,4 +80,30 @@ describe('InMemoryAdvisoryStore', () => {
   it('close is a no-op (does not throw)', () => {
     expect(() => store.close()).not.toThrow()
   })
+
+  it('D4T — getForPackage returns advisories sorted by canonical_id ASC, id ASC', () => {
+    const advisories: Advisory[] = [
+      { id: 'CVE-2024-0005', canonicalId: 'GHSA-zzzz-zzzz-zzzz', type: 'cve', packageName: 'lodash', ranges: [], severity: 'high', title: 'A', url: 'https://example.com' },
+      { id: 'CVE-2024-0003', canonicalId: 'GHSA-mmmm-mmmm-mmmm', type: 'cve', packageName: 'lodash', ranges: [], severity: 'high', title: 'B', url: 'https://example.com' },
+      { id: 'CVE-2024-0001', canonicalId: 'GHSA-aaaa-aaaa-aaaa', type: 'cve', packageName: 'lodash', ranges: [], severity: 'high', title: 'C', url: 'https://example.com' },
+      { id: 'CVE-2024-0004', canonicalId: 'GHSA-pppp-pppp-pppp', type: 'cve', packageName: 'lodash', ranges: [], severity: 'high', title: 'D', url: 'https://example.com' },
+      { id: 'CVE-2024-0002', canonicalId: 'GHSA-bbbb-bbbb-bbbb', type: 'cve', packageName: 'lodash', ranges: [], severity: 'high', title: 'E', url: 'https://example.com' },
+    ]
+
+    for (const a of advisories) {
+      store.upsert(a)
+    }
+
+    const first = store.getForPackage('lodash')
+    const second = store.getForPackage('lodash')
+
+    expect(first.map(a => a.canonicalId)).toEqual(second.map(a => a.canonicalId))
+    expect(first.map(a => a.canonicalId)).toEqual([
+      'GHSA-aaaa-aaaa-aaaa',
+      'GHSA-bbbb-bbbb-bbbb',
+      'GHSA-mmmm-mmmm-mmmm',
+      'GHSA-pppp-pppp-pppp',
+      'GHSA-zzzz-zzzz-zzzz',
+    ])
+  })
 })

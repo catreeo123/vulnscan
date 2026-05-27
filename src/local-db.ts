@@ -180,7 +180,7 @@ function mapRowsSafely(rows: AdvisoryRow[]): Advisory[] {
 }
 
 export function getAdvisoriesForPackage(db: Database.Database, packageName: string): Advisory[] {
-  const rows = db.prepare('SELECT * FROM advisories WHERE package_name = ?').all(packageName) as AdvisoryRow[]
+  const rows = db.prepare('SELECT * FROM advisories WHERE package_name = ? ORDER BY canonical_id ASC, id ASC').all(packageName) as AdvisoryRow[]
   return mapRowsSafely(rows)
 }
 

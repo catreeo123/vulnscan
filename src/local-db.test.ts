@@ -472,6 +472,50 @@ describe('N5 — openDb conditional chmod', () => {
   })
 })
 
+describe('D4T — deterministic advisory ordering', () => {
+  it('getAdvisoriesForPackage returns same order across two calls (canonical_id ASC, id ASC)', () => {
+    const database = makeDb()
+
+    // Insert 5 advisories in an order that would be non-deterministic without ORDER BY
+    const advisories = [
+      { id: 'CVE-2024-0005', canonicalId: 'GHSA-zzzz-zzzz-zzzz' },
+      { id: 'CVE-2024-0003', canonicalId: 'GHSA-mmmm-mmmm-mmmm' },
+      { id: 'CVE-2024-0001', canonicalId: 'GHSA-aaaa-aaaa-aaaa' },
+      { id: 'CVE-2024-0004', canonicalId: 'GHSA-pppp-pppp-pppp' },
+      { id: 'CVE-2024-0002', canonicalId: 'GHSA-bbbb-bbbb-bbbb' },
+    ]
+
+    for (const { id, canonicalId } of advisories) {
+      upsertAdvisory(database, {
+        id,
+        canonicalId,
+        type: 'cve',
+        packageName: 'order-test-pkg',
+        ranges: [{ introduced: '0', fixed: '1.0.0' }],
+        severity: 'high',
+        title: `Advisory ${id}`,
+        url: `https://example.com/${id}`,
+      })
+    }
+
+    const first = getAdvisoriesForPackage(database, 'order-test-pkg')
+    const second = getAdvisoriesForPackage(database, 'order-test-pkg')
+
+    // Both calls must return identical ordering
+    expect(first.map(a => a.canonicalId)).toEqual(second.map(a => a.canonicalId))
+
+    // Order must be canonical_id ASC, id ASC
+    const expectedOrder = [
+      'GHSA-aaaa-aaaa-aaaa',
+      'GHSA-bbbb-bbbb-bbbb',
+      'GHSA-mmmm-mmmm-mmmm',
+      'GHSA-pppp-pppp-pppp',
+      'GHSA-zzzz-zzzz-zzzz',
+    ]
+    expect(first.map(a => a.canonicalId)).toEqual(expectedOrder)
+  })
+})
+
 describe('pruneStaleAdvisories', () => {
   it('prunes rows with old last_seen_in_full_sync, keeps recent and GitHub-only rows', () => {
     const database = makeDb()

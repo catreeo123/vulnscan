@@ -6,7 +6,12 @@ export class InMemoryAdvisoryStore implements AdvisoryStore {
   private fullSyncTimestamps = new Map<string, number>()
 
   getForPackage(name: string): Advisory[] {
-    return [...this.advisories.values()].filter(a => a.packageName === name)
+    return [...this.advisories.values()]
+      .filter(a => a.packageName === name)
+      .sort((a, b) => {
+        const cmp = a.canonicalId.localeCompare(b.canonicalId)
+        return cmp !== 0 ? cmp : a.id.localeCompare(b.id)
+      })
   }
 
   upsert(advisory: Advisory): void {
