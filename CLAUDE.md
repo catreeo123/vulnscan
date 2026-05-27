@@ -35,9 +35,9 @@ update: runSync (full re-sync, no staleness check)
 
 | Module | Role |
 |--------|------|
-| `cli.ts` | Entry point. Routes commands, owns `AdvisoryStore` lifecycle (open/close in `finally`). `computeExitCode()` implements the exit code matrix |
+| `cli.ts` | Entry point. Exports `run(argv: string[]): Promise<number>` — returns exit code, never calls `process.exit()` inline (preserves stdout flush). Module-level wrapper sets `process.exitCode`. `computeExitCode()` implements the exit code matrix |
 | `cli-args.ts` | Parses `process.argv` into `ParsedArgs`. `--offline`/`--no-sync` → `noSync: boolean` |
-| `scanner.ts` | `runScan()` — orchestrates parse → sync → match → deduplicate. Skips local/git deps |
+| `scanner.ts` | `runScan()` / `checkPackage()` — orchestrates parse → sync → match → deduplicate. Skips local/git deps. Both accept `sync?: SyncFn` for test injection; production default is `syncIfStale` |
 | `lockfile-parser.ts` | Parses `package-lock.json` into `Dep[]`, delegating entry resolution to `lockfile-resolver.ts` |
 | `lockfile-resolver.ts` | `resolveEntry()` — classifies each lockfile entry as plain/workspace/alias/git dep |
 | `sync-orchestrator.ts` | `syncIfStale()` — per-source staleness check with clock-skew detection and double-check guard; returns `ScanWarning[]`. `runSync()` forces full pull |
@@ -51,7 +51,7 @@ update: runSync (full re-sync, no staleness check)
 | `output-renderer.ts` | `renderGrouped()` (table) and `renderJson()`. JSON output includes `schemaVersion: '1'` as first key |
 | `severity-mapper.ts` | `mapSeverity({ label?, advisoryId })` — maps OSV severity strings to `Severity`; fails safe to `'high'` |
 | `warnings.ts` | `ScanWarning` type (`incomplete` \| `informational`), factory functions `incomplete()` / `informational()`, `hasIncomplete()` predicate |
-| `config.ts` | `.vulnscanrc` loader (project dir then `~`), validates `failOn` and `stalenessHours` |
+| `config.ts` | `.vulnscanrc` loader (project dir then `~`), validates `failOn` and `stalenessHours`. `Config` includes `stalenessMs` (computed from `stalenessHours` at load time — callers use `config.stalenessMs` directly) |
 | `secrets.ts` | Scrubs tokens/keys from error messages before writing to stderr |
 | `bootstrap.ts` | `maybeBootstrap()` — downloads pre-built `db.sqlite.gz` from GitHub Releases on first run |
 | `skill-installer.ts` | `installSkill({ claudeDir?, sourcePath? })` — copies `skill/SKILL.md` to `~/.claude/skills/vulnscan/`; used by `vulnscan skill install` |
@@ -107,7 +107,13 @@ CLI `--fail-on` overrides config. Invalid severities warn to stderr and fall bac
 
 ## Test Layout
 
-Tests co-located with source (`src/foo.test.ts`). E2E tests in `src/cli.e2e.test.ts` — spawn CLI as subprocess against a temp DB and real lockfile fixtures. Unit tests use `vi.mock` for HTTP and DB.
+Tests co-located with source (`src/foo.test.ts`). E2E tests in `src/cli.e2e.test.ts` — spawn CLI as subprocess against a temp DB and real lockfile fixtures. Unit tests use `vi.mock` for HTTP; **do not `vi.mock` sync-orchestrator** — inject a stub via `sync:` on `ScanInput`/`CheckInput` instead:
+
+```typescript
+const syncStub = vi.fn().mockResolvedValue([])
+await runScan({ lockfileContent, store, config: baseConfig, sync: syncStub })
+expect(syncStub).toHaveBeenCalledWith(store, baseConfig.stalenessMs)
+```
 
 **`vi.spyOn(process.stderr, 'write')` is unreliable in vitest ESM.** Use direct property replacement instead:
 
