@@ -165,8 +165,15 @@ Single-context repo — `CONTEXT.md` at root, ADRs in `docs/adr/`. See `docs/age
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
-Rules:
-- ALWAYS read graphify-out/GRAPH_REPORT.md before reading any source files, running grep/glob searches, or answering codebase questions. The graph is your primary map of the codebase.
+**HARD STOP: Read graphify-out/GRAPH_REPORT.md FIRST — before any file read, grep, glob, or codebase question. No exceptions. "I already know the codebase" is not a valid reason to skip it.**
+
+What to extract from GRAPH_REPORT.md before proceeding:
+1. **God nodes** — highest-edge nodes = highest blast radius. Touch these last, test these most.
+2. **Cross-community bridges** — nodes with high betweenness centrality = bug propagation highways.
+3. **Knowledge gaps / isolated nodes** — weakly-connected nodes = undocumented or undertested. Directly predicts coverage gaps.
+4. **Graph freshness** — check `Built from commit` vs `git rev-parse HEAD`. If stale, run `graphify update .` before reading anything else.
+
+Additional rules:
 - IF graphify-out/wiki/index.md EXISTS, navigate it instead of reading raw files
-- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse EXTRACTED + INFERRED edges instead of scanning files
+- After modifying code, run `graphify update .` in the same session (AST-only, no API cost, takes ~5s)
