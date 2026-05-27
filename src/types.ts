@@ -1,4 +1,4 @@
-export type Dep = { name: string; version: string; via?: string }
+export type Dep = { name: string; version: string; via?: string; local?: boolean }
 
 export type Severity = 'critical' | 'high' | 'moderate' | 'low'
 

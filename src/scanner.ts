@@ -1,21 +1,26 @@
 import type { Finding, AdvisoryStore } from './types.js'
 import type { Config } from './config.js'
 import type { ScanWarning } from './warnings.js'
+import { informational } from './warnings.js'
 import { parseLockfile } from './lockfile-parser.js'
 import { matchAffected } from './affected-range-matcher.js'
 import { deduplicate } from './deduplicator.js'
 import { syncIfStale } from './sync-orchestrator.js'
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 export type CheckInput = {
   name: string
   version: string
   store: AdvisoryStore
   config: Config
+  noSync?: boolean
 }
 
 export type CheckResult = {
   findings: Finding[]
   advisoryCount: number
+  warnings: ScanWarning[]
 }
 
 export type ScanInput = {
@@ -23,6 +28,7 @@ export type ScanInput = {
   packageJsonContent?: string
   store: AdvisoryStore
   config: Config
+  noSync?: boolean
 }
 
 export type ScanResult = {
@@ -32,15 +38,44 @@ export type ScanResult = {
   depCount: number
 }
 
+function offlineStalenessWarnings(store: AdvisoryStore): ScanWarning[] {
+  const now = Date.now()
+  const osvLast = store.getLastSyncedAt('osv')
+  const ghLast = store.getLastSyncedAt('github')
+  const warnings: ScanWarning[] = []
+  if (osvLast === null || now - osvLast > SEVEN_DAYS_MS) {
+    warnings.push(
+      informational(
+        `Advisory database may be stale: OSV data ${osvLast === null ? 'has never been synced' : `was last synced ${Math.floor((now - osvLast) / (24 * 60 * 60 * 1000))} day(s) ago`}. Run \`vulnscan update\` to refresh.`,
+      ),
+    )
+  }
+  if (ghLast === null || now - ghLast > SEVEN_DAYS_MS) {
+    warnings.push(
+      informational(
+        `Advisory database may be stale: GitHub Advisory data ${ghLast === null ? 'has never been synced' : `was last synced ${Math.floor((now - ghLast) / (24 * 60 * 60 * 1000))} day(s) ago`}. Run \`vulnscan update\` to refresh.`,
+      ),
+    )
+  }
+  return warnings
+}
+
 export async function runScan(input: ScanInput): Promise<ScanResult> {
-  const { lockfileContent, packageJsonContent, store, config } = input
+  const { lockfileContent, packageJsonContent, store, config, noSync } = input
 
-  const { deps, warnings } = parseLockfile(lockfileContent, packageJsonContent)
+  const { deps, warnings: parseWarnings } = parseLockfile(lockfileContent, packageJsonContent)
 
-  await syncIfStale(store, config.stalenessHours * 60 * 60 * 1000)
+  const extraWarnings: ScanWarning[] = []
+  if (noSync) {
+    extraWarnings.push(...offlineStalenessWarnings(store))
+  } else {
+    const syncWarnings = await syncIfStale(store, config.stalenessHours * 60 * 60 * 1000)
+    extraWarnings.push(...syncWarnings)
+  }
 
   const allFindings: Finding[] = []
   for (const dep of deps) {
+    if (dep.local) continue
     const advisories = store.getForPackage(dep.name)
     if (advisories.length === 0) continue
     const findings = matchAffected(dep, advisories)
@@ -52,16 +87,22 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
 
   return {
     findings: deduped,
-    warnings,
+    warnings: [...parseWarnings, ...extraWarnings],
     advisoryCount: count,
     depCount: deps.length,
   }
 }
 
 export async function checkPackage(input: CheckInput): Promise<CheckResult> {
-  const { name, version, store, config } = input
+  const { name, version, store, config, noSync } = input
 
-  await syncIfStale(store, config.stalenessHours * 60 * 60 * 1000)
+  const warnings: ScanWarning[] = []
+  if (noSync) {
+    warnings.push(...offlineStalenessWarnings(store))
+  } else {
+    const syncWarnings = await syncIfStale(store, config.stalenessHours * 60 * 60 * 1000)
+    warnings.push(...syncWarnings)
+  }
 
   const advisories = store.getForPackage(name)
   const findings = deduplicate(matchAffected({ name, version }, advisories))
@@ -70,5 +111,6 @@ export async function checkPackage(input: CheckInput): Promise<CheckResult> {
   return {
     findings,
     advisoryCount: count,
+    warnings,
   }
 }

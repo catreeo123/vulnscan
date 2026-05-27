@@ -67,7 +67,7 @@ describe('parseLockfile', () => {
     expect(deps).toContainEqual({ name: 'bar', version: '2.0.0' })
   })
 
-  it('skips npm alias deps and emits one warning per skipped dep', () => {
+  it('resolves npm alias deps to target package and emits an informational warning', () => {
     const fixture = JSON.stringify({
       name: 'my-app',
       lockfileVersion: 2,
@@ -87,10 +87,13 @@ describe('parseLockfile', () => {
 
     const { deps, warnings } = parseLockfile(fixture)
 
+    // alias is resolved to the target package (lodash), not skipped
+    expect(deps).toContainEqual(expect.objectContaining({ name: 'lodash', version: '4.17.21', via: 'lodash-alias' }))
     expect(deps).not.toContainEqual(expect.objectContaining({ name: 'lodash-alias' }))
-    expect(deps).not.toContainEqual(expect.objectContaining({ name: 'lodash' }))
     expect(deps).toContainEqual({ name: 'semver', version: '7.6.0' })
+    // warning is informational (not incomplete)
     expect(warnings).toHaveLength(1)
+    expect(warnings[0].class).toBe('informational')
     expect(warnings[0].message).toMatch(/lodash-alias/)
   })
 

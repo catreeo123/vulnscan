@@ -685,3 +685,91 @@ describe('vulnscan check — stalenessHours respected', () => {
     }
   })
 })
+
+// ── D7: workspace local:true — workspace pkg not advisory-checked ─────────────
+
+describe('vulnscan scan — D7 workspace local dep not scanned against advisories', () => {
+  it('workspace package (link:true) with matching advisory name does not produce a finding', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vulnscan-ws-local-'))
+    const dbp = join(dir, 'ws-local.sqlite')
+    try {
+      // Lockfile with a workspace entry via link:true named "lodash" (same as an advisory package)
+      // If local:true skipping works, no finding should be returned despite advisory existing.
+      writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({
+        name: 'monorepo', lockfileVersion: 2,
+        packages: {
+          '': {},
+          'packages/lodash': { version: '1.0.0', name: 'lodash', link: true },
+        },
+      }))
+      const db = openDb(dbp)
+      upsertAdvisory(db, {
+        id: 'CVE-TEST-WS01',
+        canonicalId: 'GHSA-0000-0000-WS01',
+        type: 'cve',
+        packageName: 'lodash',
+        ranges: [{ introduced: '0', fixed: '2.0.0' }],
+        severity: 'critical',
+        title: 'Test advisory for lodash',
+        url: 'https://github.com/advisories/GHSA-0000-0000-WS01',
+      })
+      setLastSyncedAt(db, 'osv', Date.now())
+      setLastSyncedAt(db, 'github', Date.now())
+      db.close()
+
+      const result = spawnCli(['scan', dir, '--format', 'json'], dbp)
+      const parsed = JSON.parse(result.stdout)
+      // Workspace dep is local:true — advisory store lookup must be skipped → no findings
+      expect(parsed.findings).toHaveLength(0)
+      expect(result.status).toBe(0)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+// ── D7: npm alias — advisory for target package is matched ───────────────────
+
+describe('vulnscan scan — D7 npm alias resolves advisories against target package', () => {
+  it('alias dep triggers finding when advisory exists for the aliased target package', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vulnscan-alias-'))
+    const dbp = join(dir, 'alias.sqlite')
+    try {
+      // lodash-fork is an alias for lodash@4.17.20 — advisory covers lodash < 4.17.21
+      writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({
+        name: 'my-app', lockfileVersion: 2,
+        packages: {
+          '': { dependencies: { 'lodash-fork': 'npm:lodash@4.17.20' } },
+          'node_modules/lodash-fork': {
+            version: '4.17.20',
+            resolved: 'https://registry.npmjs.org/lodash/-/lodash-4.17.20.tgz',
+            name: 'lodash',
+          },
+        },
+      }))
+      const db = openDb(dbp)
+      upsertAdvisory(db, {
+        id: 'CVE-2021-23337',
+        canonicalId: 'GHSA-35JH-R3H4-6JHM',
+        type: 'cve',
+        packageName: 'lodash',
+        ranges: [{ introduced: '0', fixed: '4.17.21' }],
+        severity: 'high',
+        title: 'Prototype Pollution',
+        url: 'https://github.com/advisories/GHSA-35jh-r3h4-6jhm',
+      })
+      setLastSyncedAt(db, 'osv', Date.now())
+      setLastSyncedAt(db, 'github', Date.now())
+      db.close()
+
+      const result = spawnCli(['scan', dir, '--format', 'json'], dbp)
+      const parsed = JSON.parse(result.stdout)
+      // The alias dep (lodash-fork → lodash@4.17.20) must surface as a finding for lodash
+      expect(parsed.findings.length).toBeGreaterThan(0)
+      expect(parsed.findings[0].name).toBe('lodash')
+      expect(result.status).toBe(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
