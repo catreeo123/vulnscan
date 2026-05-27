@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.1] — 2026-05-27
+
+### Fixes
+
+- **`--fail-on` threshold semantics** — re-ships the floor fix from #20 which was missing from the 0.2.0 tarball published by a parallel agent.
+
 ## [0.2.0] — 2026-05-27
 
 ### New features
