@@ -9,7 +9,9 @@ import { runScan, checkPackage } from './scanner.js'
 import { parseArgs } from './cli-args.js'
 import { scrubSecrets } from './secrets.js'
 import { maybeBootstrap } from './bootstrap.js'
+import { hasIncomplete } from './warnings.js'
 import type { Severity, Finding } from './types.js'
+import type { ScanWarning } from './warnings.js'
 
 // M3: parseArgs is now called inside main(), not at module scope.
 
@@ -45,17 +47,17 @@ async function main(): Promise<void> {
     await maybeBootstrap()
     const store = openStore()
     try {
-      const result = await checkPackage({ name, version, store, config })
+      const result = await checkPackage({ name, version, store, config, noSync: parsed.noSync })
 
       if (parsed.format === 'json') {
-        process.stdout.write(renderJson(result.findings, []) + '\n')
+        process.stdout.write(renderJson(result.findings, result.warnings) + '\n')
       } else {
         process.stderr.write(`Checked ${pkgArg} against ${result.advisoryCount} advisories\n`)
-        process.stdout.write(renderGrouped(result.findings, []) + '\n')
+        process.stdout.write(renderGrouped(result.findings, result.warnings) + '\n')
       }
 
       // M1 fix: use exitCode + return instead of process.exit after stdout writes
-      process.exitCode = shouldFail(result.findings, getFailOn(parsed.failOn, parsed.dir ?? '.')) ? 1 : 0
+      process.exitCode = computeExitCode(result.findings, result.warnings, getFailOn(parsed.failOn, parsed.dir ?? '.'))
     } finally {
       safeClose(store)
     }
@@ -77,7 +79,7 @@ async function main(): Promise<void> {
       const packageJsonPath = resolve(projectDir, 'package.json')
       const packageJsonContent = existsSync(packageJsonPath) ? readFileSync(packageJsonPath, 'utf8') : undefined
 
-      const result = await runScan({ lockfileContent, packageJsonContent, store, config })
+      const result = await runScan({ lockfileContent, packageJsonContent, store, config, noSync: parsed.noSync })
 
       if (parsed.format === 'json') {
         process.stdout.write(renderJson(result.findings, result.warnings) + '\n')
@@ -88,7 +90,7 @@ async function main(): Promise<void> {
 
       const failOn = getFailOn(parsed.failOn, projectDir)
       // M1 fix: use exitCode + return instead of process.exit after stdout writes
-      process.exitCode = shouldFail(result.findings, failOn) ? 1 : 0
+      process.exitCode = computeExitCode(result.findings, result.warnings, failOn)
     } finally {
       safeClose(store)
     }
@@ -104,26 +106,38 @@ function renderHelp(topic?: 'scan' | 'check' | 'update'): string {
     return `vulnscan scan — scan a project's package-lock.json for known vulnerabilities
 
 Usage:
-  vulnscan scan [<dir>] [--format json|table] [--fail-on critical,high,...]
+  vulnscan scan [<dir>] [--format json|table] [--fail-on critical,high,...] [--offline]
   vulnscan [<dir>]                     (scan is the default command)
 
 Options:
   --format <fmt>     Output format: 'table' (default) or 'json'
   --fail-on <csv>    Comma-separated severities that cause exit 1 (overrides .vulnscanrc)
+  --offline, --no-sync  Skip advisory database sync (use existing local data)
   --help, -h         Show this message
+
+Exit codes:
+  0   Clean — no findings at or above the fail-on threshold, no incomplete warnings
+  1   Findings — one or more findings meet the fail-on severity threshold
+  2   Incomplete — scan could not cover all packages (e.g. git-sourced deps, v1 lockfile)
 `
   }
   if (topic === 'check') {
     return `vulnscan check — check a single package@version against the advisory database
 
 Usage:
-  vulnscan check <pkg@version> [--dir <path>] [--format json|table] [--fail-on ...]
+  vulnscan check <pkg@version> [--dir <path>] [--format json|table] [--fail-on ...] [--offline]
 
 Options:
   --dir <path>       Directory for .vulnscanrc lookup (default: current directory)
   --format <fmt>     Output format: 'table' (default) or 'json'
   --fail-on <csv>    Comma-separated severities that cause exit 1 (overrides .vulnscanrc)
+  --offline, --no-sync  Skip advisory database sync (use existing local data)
   --help, -h         Show this message
+
+Exit codes:
+  0   Clean — no findings at or above the fail-on threshold, no incomplete warnings
+  1   Findings — one or more findings meet the fail-on severity threshold
+  2   Incomplete — check could not fully cover the package (e.g. incomplete advisory sync)
 `
   }
   if (topic === 'update') {
@@ -143,8 +157,8 @@ Options:
   return `vulnscan — npm dependency vulnerability scanner
 
 Usage:
-  vulnscan [scan] [<dir>] [--format json|table] [--fail-on critical,high,...]
-  vulnscan check <pkg@version> [--dir <path>] [--format json|table] [--fail-on ...]
+  vulnscan [scan] [<dir>] [--format json|table] [--fail-on critical,high,...] [--offline]
+  vulnscan check <pkg@version> [--dir <path>] [--format json|table] [--fail-on ...] [--offline]
   vulnscan update
   vulnscan <command> --help     Show usage for a specific subcommand
   vulnscan --help
@@ -153,7 +167,13 @@ Options:
   --format <fmt>     Output format: 'table' (default) or 'json'
   --fail-on <csv>    Comma-separated severities that cause exit 1 (overrides .vulnscanrc)
   --dir <path>       (check only) directory for .vulnscanrc lookup
+  --offline, --no-sync  Skip advisory database sync (use existing local data)
   --help, -h         Show this message
+
+Exit codes:
+  0   Clean — no findings at or above the fail-on threshold, no incomplete warnings
+  1   Findings — one or more findings meet the fail-on severity threshold
+  2   Incomplete — scan could not cover all packages; check pipelines accordingly
 `
 }
 
@@ -173,6 +193,18 @@ function getFailOn(failOnArg: string | null, projectDir = '.'): Severity[] {
 
 function shouldFail(findings: Finding[], failOn: Severity[]): boolean {
   return findings.some((f) => failOn.includes(f.advisory.severity))
+}
+
+/**
+ * Exit code matrix:
+ *   1 — findings ≥ failOn severity (overrides 2)
+ *   2 — no qualifying findings, but at least one incomplete warning
+ *   0 — clean
+ */
+function computeExitCode(findings: Finding[], warnings: ScanWarning[], failOn: Severity[]): number {
+  if (shouldFail(findings, failOn)) return 1
+  if (hasIncomplete(warnings)) return 2
+  return 0
 }
 
 main().catch((err) => {

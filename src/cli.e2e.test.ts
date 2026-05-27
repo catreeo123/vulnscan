@@ -773,3 +773,246 @@ describe('vulnscan scan — D7 npm alias resolves advisories against target pack
     }
   })
 })
+
+// ── D5T: --offline flag ───────────────────────────────────────────────────────
+
+describe('vulnscan scan — --offline flag (empty DB, never synced)', () => {
+  it('exits 0 and emits informational warning when DB has never been synced', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vulnscan-offline-empty-'))
+    const dbp = join(dir, 'offline-empty.sqlite')
+    try {
+      writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({
+        name: 'test-project', lockfileVersion: 2,
+        packages: { '': {}, 'node_modules/some-pkg-no-advisory': { version: '1.0.0', resolved: 'https://registry.npmjs.org/some-pkg-no-advisory/-/some-pkg-no-advisory-1.0.0.tgz' } },
+      }))
+      // Create empty DB (no advisory data, no sync cursors) to prevent bootstrap
+      const db = openDb(dbp)
+      db.close()
+
+      const result = spawnCli(['scan', dir, '--offline', '--format', 'json'], dbp)
+      expect(result.status).toBe(0)
+      const parsed = JSON.parse(result.stdout)
+      expect(parsed.findings).toHaveLength(0)
+      expect(Array.isArray(parsed.warnings)).toBe(true)
+      // JSON warnings are serialized as message strings (see renderJson)
+      expect(parsed.warnings.length).toBeGreaterThan(0)
+      expect(parsed.warnings.some((w: string) => w.includes('never been synced'))).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('--no-sync alias: exits 0 and emits informational warning when DB has never been synced', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vulnscan-no-sync-'))
+    const dbp = join(dir, 'no-sync.sqlite')
+    try {
+      writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({
+        name: 'test-project', lockfileVersion: 2,
+        packages: { '': {} },
+      }))
+      // Create empty DB to prevent bootstrap
+      const db = openDb(dbp)
+      db.close()
+
+      const result = spawnCli(['scan', dir, '--no-sync', '--format', 'json'], dbp)
+      expect(result.status).toBe(0)
+      const parsed = JSON.parse(result.stdout)
+      expect(Array.isArray(parsed.warnings)).toBe(true)
+      // JSON warnings are serialized as message strings (see renderJson)
+      expect(parsed.warnings.length).toBeGreaterThan(0)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('vulnscan scan — --offline flag (stale DB, cursor > 7 days)', () => {
+  it('exits 0 and emits informational warning when DB cursors are older than 7 days', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vulnscan-offline-stale-'))
+    const dbp = join(dir, 'offline-stale.sqlite')
+    try {
+      writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({
+        name: 'test-project', lockfileVersion: 2,
+        packages: { '': {}, 'node_modules/some-pkg-no-advisory': { version: '1.0.0', resolved: 'https://registry.npmjs.org/some-pkg-no-advisory/-/some-pkg-no-advisory-1.0.0.tgz' } },
+      }))
+      // Seed DB with backdate cursors to 8 days ago (no advisory data)
+      const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000
+      const db = openDb(dbp)
+      setLastSyncedAt(db, 'osv', eightDaysAgo)
+      setLastSyncedAt(db, 'github', eightDaysAgo)
+      db.close()
+
+      const result = spawnCli(['scan', dir, '--offline', '--format', 'json'], dbp)
+      expect(result.status).toBe(0)
+      const parsed = JSON.parse(result.stdout)
+      expect(Array.isArray(parsed.warnings)).toBe(true)
+      // JSON warnings are serialized as message strings (see renderJson)
+      expect(parsed.warnings.length).toBeGreaterThan(0)
+      // Should mention stale data
+      expect(parsed.warnings.some((w: string) => w.includes('stale'))).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+// ── D1: Exit code matrix (0/1/2) ─────────────────────────────────────────────
+
+describe('vulnscan scan — D1 exit code matrix', () => {
+  // Cell: clean (exit 0)
+  it('exits 0 when no findings and no incomplete warnings', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vulnscan-d1-clean-'))
+    const dbp = join(dir, 'clean.sqlite')
+    try {
+      writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({
+        name: 'clean-project', lockfileVersion: 2,
+        packages: {
+          '': { dependencies: { 'safe-pkg': '^1.0.0' } },
+          'node_modules/safe-pkg': { version: '1.0.0', resolved: 'https://registry.npmjs.org/safe-pkg/-/safe-pkg-1.0.0.tgz' },
+        },
+      }))
+      const db = openDb(dbp)
+      setLastSyncedAt(db, 'osv', Date.now())
+      setLastSyncedAt(db, 'github', Date.now())
+      db.close()
+
+      const result = spawnCli(['scan', dir], dbp)
+      expect(result.status).toBe(0)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  // Cell: findings (exit 1)
+  it('exits 1 when findings meet fail-on threshold', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vulnscan-d1-findings-'))
+    const dbp = join(dir, 'findings.sqlite')
+    try {
+      writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({
+        name: 'vuln-project', lockfileVersion: 2,
+        packages: {
+          '': { dependencies: { lodash: '^4.17.20' } },
+          'node_modules/lodash': { version: '4.17.20', resolved: 'https://registry.npmjs.org/lodash/-/lodash-4.17.20.tgz' },
+        },
+      }))
+      const db = openDb(dbp)
+      upsertAdvisory(db, {
+        id: 'CVE-2021-23337', canonicalId: 'GHSA-35JH-R3H4-6JHM', type: 'cve',
+        packageName: 'lodash', ranges: [{ introduced: '0', fixed: '4.17.21' }],
+        severity: 'high', title: 'Prototype Pollution', url: 'https://github.com/advisories/GHSA-35jh-r3h4-6jhm',
+      })
+      setLastSyncedAt(db, 'osv', Date.now())
+      setLastSyncedAt(db, 'github', Date.now())
+      db.close()
+
+      const result = spawnCli(['scan', dir, '--fail-on', 'high'], dbp)
+      expect(result.status).toBe(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  // Cell: incomplete-only (exit 2) — git-sourced dep triggers class:'incomplete', no findings
+  it('exits 2 when scan has incomplete warning and no qualifying findings', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vulnscan-d1-incomplete-'))
+    const dbp = join(dir, 'incomplete.sqlite')
+    try {
+      // git-sourced dep → lockfile-resolver emits class:'incomplete' warning
+      writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({
+        name: 'git-project', lockfileVersion: 2,
+        packages: {
+          '': { dependencies: { 'git-dep': 'git+https://github.com/example/dep.git' } },
+          'node_modules/git-dep': { version: '1.0.0', resolved: 'git+https://github.com/example/dep.git' },
+        },
+      }))
+      const db = openDb(dbp)
+      setLastSyncedAt(db, 'osv', Date.now())
+      setLastSyncedAt(db, 'github', Date.now())
+      db.close()
+
+      const result = spawnCli(['scan', dir], dbp)
+      expect(result.status).toBe(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  // Cell: findings + incomplete (exit 1, findings override)
+  it('exits 1 when findings exist even alongside incomplete warnings', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vulnscan-d1-both-'))
+    const dbp = join(dir, 'both.sqlite')
+    try {
+      // Mix: one registry dep with a vuln + one git-sourced dep (incomplete)
+      writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({
+        name: 'mixed-project', lockfileVersion: 2,
+        packages: {
+          '': { dependencies: { lodash: '^4.17.20', 'git-dep': 'git+https://github.com/example/dep.git' } },
+          'node_modules/lodash': { version: '4.17.20', resolved: 'https://registry.npmjs.org/lodash/-/lodash-4.17.20.tgz' },
+          'node_modules/git-dep': { version: '1.0.0', resolved: 'git+https://github.com/example/dep.git' },
+        },
+      }))
+      const db = openDb(dbp)
+      upsertAdvisory(db, {
+        id: 'CVE-2021-23337', canonicalId: 'GHSA-35JH-R3H4-6JHM', type: 'cve',
+        packageName: 'lodash', ranges: [{ introduced: '0', fixed: '4.17.21' }],
+        severity: 'high', title: 'Prototype Pollution', url: 'https://github.com/advisories/GHSA-35jh-r3h4-6jhm',
+      })
+      setLastSyncedAt(db, 'osv', Date.now())
+      setLastSyncedAt(db, 'github', Date.now())
+      db.close()
+
+      // findings (high) + incomplete (git-dep) → exit 1 (findings override)
+      const result = spawnCli(['scan', dir, '--fail-on', 'high'], dbp)
+      expect(result.status).toBe(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('vulnscan check — D1 exit code matrix', () => {
+  // Cell: clean (exit 0)
+  it('exits 0 when no findings and no incomplete warnings', () => {
+    const result = spawnCli(['check', 'some-safe-pkg@1.0.0'], dbPath)
+    expect(result.status).toBe(0)
+  })
+
+  // Cell: findings (exit 1)
+  it('exits 1 when findings meet fail-on threshold', () => {
+    const result = spawnCli(['check', 'lodash@4.17.20', '--fail-on', 'high'], dbPath)
+    expect(result.status).toBe(1)
+  })
+
+  // Cell: findings + incomplete → exit 1 (findings override)
+  it('exits 1 when findings exist, confirming findings override incomplete warnings', () => {
+    // The seeded DB has a high advisory for lodash. Findings take priority over any warnings.
+    const result = spawnCli(['check', 'lodash@4.17.20', '--fail-on', 'high'], dbPath)
+    expect(result.status).toBe(1)
+  })
+})
+
+describe('vulnscan --help — D1 exit codes documented', () => {
+  it('global --help lists exit codes 0, 1, and 2', () => {
+    const result = spawnCli(['--help'], dbPath)
+    expect(result.stdout).toMatch(/exit code/i)
+    expect(result.stdout).toMatch(/\b0\b/)
+    expect(result.stdout).toMatch(/\b1\b/)
+    expect(result.stdout).toMatch(/\b2\b/)
+  })
+
+  it('scan --help lists exit codes 0, 1, and 2', () => {
+    const result = spawnCli(['scan', '--help'], dbPath)
+    expect(result.stdout).toMatch(/exit code/i)
+    expect(result.stdout).toMatch(/\b0\b/)
+    expect(result.stdout).toMatch(/\b1\b/)
+    expect(result.stdout).toMatch(/\b2\b/)
+  })
+
+  it('check --help lists exit codes 0, 1, and 2', () => {
+    const result = spawnCli(['check', '--help'], dbPath)
+    expect(result.stdout).toMatch(/exit code/i)
+    expect(result.stdout).toMatch(/\b0\b/)
+    expect(result.stdout).toMatch(/\b1\b/)
+    expect(result.stdout).toMatch(/\b2\b/)
+  })
+})
