@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.3] — 2026-05-27
+
+### Fixes
+
+- **OSV severity warning dedupe** — `syncOsv` previously accumulated one `informational` warning per advisory that lacked severity metadata. On a full 211k-advisory OSV sync, this produced ~100k warnings which `sync-orchestrator` then spread into a result array, triggering V8's `Maximum call stack size exceeded` crash on fresh installs. Warnings are now collapsed into a single summary (e.g. `"42 advisories have unknown or missing severity metadata; defaulted to 'high' (fail-safe escalation)"`). Zero warnings are returned when all entries carry valid severity. Closes #23.
+
 ## [0.2.2] — 2026-05-27
 
 ### Tests

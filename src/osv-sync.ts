@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Advisory, AdvisoryStore, SemverRange } from './types.js'
 import { mapSeverity } from './severity-mapper.js'
+import { informational } from './warnings.js'
 import type { ScanWarning } from './warnings.js'
 
 const OSV_NPM_URL = 'https://osv-vulnerabilities.storage.googleapis.com/npm/all.zip'
@@ -52,7 +53,7 @@ export async function syncOsv(
     const total = entries.length
 
     const allAdvisories: Advisory[] = []
-    const allWarnings: ScanWarning[] = []
+    let missingSeverityCount = 0
 
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i]
@@ -76,7 +77,9 @@ export async function syncOsv(
         allAdvisories.push(advisory)
         imported++
       }
-      allWarnings.push(...warnings)
+      // Count per-entry severity warnings; don't accumulate all — avoids V8 spread overflow
+      // when sync-orchestrator spreads this array for 100k+ advisories (issue #23).
+      missingSeverityCount += warnings.filter((w) => w.class === 'informational').length
       if (onProgress && imported % 500 === 0) onProgress({ parsed: imported, total })
     }
 
@@ -92,7 +95,16 @@ export async function syncOsv(
     }
 
     process.stderr.write(`OSV: imported ${imported} advisories (${skipped} skipped)\n`)
-    return { imported, skipped, fullSyncStartedAt, warnings: allWarnings }
+    const warnings: ScanWarning[] = []
+    if (missingSeverityCount > 0) {
+      const noun = missingSeverityCount === 1 ? 'advisory has' : 'advisories have'
+      warnings.push(
+        informational(
+          `${missingSeverityCount} ${noun} unknown or missing severity metadata; defaulted to 'high' (fail-safe escalation)`,
+        ),
+      )
+    }
+    return { imported, skipped, fullSyncStartedAt, warnings }
   } finally {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true })
   }

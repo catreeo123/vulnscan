@@ -135,7 +135,7 @@ function makeNoSeverityResponse(): Response {
   return new Response(stream, { status: 200 })
 }
 
-it('D6T: OSV entry with no severity escalates to high and returns informational warning', async () => {
+it('D6T: OSV entry with no severity escalates to high and returns single summary warning', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeNoSeverityResponse()))
 
   const store = makeStore()
@@ -148,10 +148,74 @@ it('D6T: OSV entry with no severity escalates to high and returns informational 
   expect(advisory.severity).toBe('high')
   expect(advisory.packageName).toBe('test-pkg-no-sev')
 
-  // An informational warning should be returned
+  // A single summary informational warning should be returned (not one per advisory)
   expect(result.warnings).toHaveLength(1)
   expect(result.warnings[0].class).toBe('informational')
-  expect(result.warnings[0].message).toContain('GHSA-test-no-sev-0001')
+  expect(result.warnings[0].message).toContain('1')
+  expect(result.warnings[0].message).toContain('unknown or missing severity metadata')
+})
+
+// ─── D6T-BULK: 50 advisories with missing severity → single summary warning ───
+
+it('D6T-BULK: 50 entries with missing severity collapse to one summary warning with count 50', async () => {
+  const entries = Array.from({ length: 50 }, (_, i) => {
+    const id = `GHSA-bulk-${i.toString().padStart(4, '0')}-aaaa`
+    return {
+      name: `${id}.json`,
+      content: JSON.stringify({
+        id,
+        summary: `Bulk test advisory ${i}`,
+        affected: [{
+          package: { ecosystem: 'npm', name: `bulk-pkg-${i}` },
+          ranges: [{ type: 'SEMVER', events: [{ introduced: '1.0.0' }, { fixed: '2.0.0' }] }],
+          // No database_specific.severity — triggers mapSeverity fail-safe
+        }],
+      }),
+    }
+  })
+
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeZipResponse(entries)))
+  const store = makeStore()
+  const { syncOsv } = await import('./osv-sync.js')
+  const result = await syncOsv(store)
+
+  // All 50 advisories imported
+  expect(result.imported).toBe(50)
+
+  // Exactly ONE summary warning — not 50
+  expect(result.warnings).toHaveLength(1)
+  expect(result.warnings[0].class).toBe('informational')
+  expect(result.warnings[0].message).toContain('50')
+  expect(result.warnings[0].message).toContain('unknown or missing severity metadata')
+})
+
+// ─── D6T-NONE: entries with severity set → no warnings emitted ───
+
+it('D6T-NONE: entries with explicit severity produce no severity warnings', async () => {
+  const entries = Array.from({ length: 3 }, (_, i) => {
+    const id = `GHSA-sev-${i.toString().padStart(4, '0')}-bbbb`
+    return {
+      name: `${id}.json`,
+      content: JSON.stringify({
+        id,
+        summary: `Severity-set advisory ${i}`,
+        affected: [{
+          package: { ecosystem: 'npm', name: `sev-pkg-${i}` },
+          ranges: [{ type: 'SEMVER', events: [{ introduced: '1.0.0' }, { fixed: '2.0.0' }] }],
+          database_specific: { severity: 'HIGH' },
+        }],
+      }),
+    }
+  })
+
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeZipResponse(entries)))
+  const store = makeStore()
+  const { syncOsv } = await import('./osv-sync.js')
+  const result = await syncOsv(store)
+
+  expect(result.imported).toBe(3)
+  // No warnings when all entries have valid severity metadata
+  expect(result.warnings).toHaveLength(0)
 })
 
 // ─── M1: streaming path — res.arrayBuffer() is NOT called ───
