@@ -60,9 +60,12 @@ export async function syncIfStale(
 // Used by the `update` command where the user explicitly requests a fresh pull.
 export async function runSync(store: AdvisoryStore): Promise<void> {
   const { fullSyncStartedAt } = await syncOsv(store)
-  await syncGithubSafe(store)
+  const ghWarnings = await syncGithubSafe(store)
   store.pruneStale(fullSyncStartedAt, GRACE_PERIOD_MS)
   store.setLastSyncedAt('osv', Date.now())
+  for (const warning of ghWarnings) {
+    process.stderr.write(`warning: ${warning.message}\n`)
+  }
 }
 
 async function syncGithubSafe(store: AdvisoryStore): Promise<ScanWarning[]> {
