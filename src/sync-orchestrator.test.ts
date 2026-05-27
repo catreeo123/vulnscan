@@ -133,6 +133,38 @@ describe('D8: clock-skew guard', () => {
   })
 })
 
+// ─── D9: syncGithubSafe emits incomplete warning on error ────────────────────
+
+describe('D9: syncGithubSafe error → incomplete warning', () => {
+  it('returns incomplete warning when syncGithubAdvisories throws', async () => {
+    const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+    vi.mocked(syncGithubAdvisories).mockRejectedValueOnce(new Error('403 Forbidden'))
+
+    const store = makeStore()
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+    const warnings = await syncIfStale(store)
+
+    expect(warnings.some((w) => w.class === 'incomplete')).toBe(true)
+    expect(warnings.some((w) => w.message.includes('403 Forbidden'))).toBe(true)
+  })
+
+  it('scrubs secrets from the error message in the incomplete warning', async () => {
+    const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+    vi.mocked(syncGithubAdvisories).mockRejectedValueOnce(
+      new Error('403 Forbidden: Bearer ghp_abcdefghijklmnopqrstuvwxyz123456'),
+    )
+
+    const store = makeStore()
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+    const warnings = await syncIfStale(store)
+
+    const incompleteWarning = warnings.find((w) => w.class === 'incomplete')
+    expect(incompleteWarning).toBeDefined()
+    expect(incompleteWarning!.message).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz123456')
+    expect(incompleteWarning!.message).toContain('[REDACTED]')
+  })
+})
+
 // ─── D5T: double-checked staleness ───────────────────────────────────────────
 
 describe('D5T: double-checked staleness', () => {

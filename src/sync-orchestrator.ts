@@ -2,7 +2,7 @@ import type { AdvisoryStore } from './types.js'
 import { syncOsv } from './osv-sync.js'
 import { syncGithubAdvisories } from './github-advisory-sync.js'
 import { scrubSecrets } from './secrets.js'
-import { informational } from './warnings.js'
+import { incomplete, informational } from './warnings.js'
 import type { ScanWarning } from './warnings.js'
 
 const DEFAULT_STALENESS_MS = 24 * 60 * 60 * 1000
@@ -71,9 +71,10 @@ async function syncGithubSafe(store: AdvisoryStore): Promise<ScanWarning[]> {
     const { warnings } = await syncGithubAdvisories(store, since)
     return warnings
   } catch (err) {
+    const scrubbed = scrubSecrets((err as Error).message)
     process.stderr.write(
-      `GitHub Advisory: sync failed (${scrubSecrets((err as Error).message)}) — proceeding with OSV data only\n`,
+      `GitHub Advisory: sync failed (${scrubbed}) — proceeding with OSV data only\n`,
     )
-    return []
+    return [incomplete(`GitHub Advisory sync failed: ${scrubbed}`)]
   }
 }
