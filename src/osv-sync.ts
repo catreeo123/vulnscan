@@ -4,7 +4,9 @@ import { Readable } from 'node:stream'
 import { createWriteStream, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Advisory, AdvisoryStore, SemverRange, Severity } from './types.js'
+import type { Advisory, AdvisoryStore, SemverRange } from './types.js'
+import { mapSeverity } from './severity-mapper.js'
+import type { ScanWarning } from './warnings.js'
 
 const OSV_NPM_URL = 'https://osv-vulnerabilities.storage.googleapis.com/npm/all.zip'
 
@@ -28,7 +30,7 @@ export async function syncOsv(
   store: AdvisoryStore,
   // "parsed" = queued in memory; store write happens in a single batch after the parse loop
   onProgress?: (event: { parsed: number; total: number }) => void,
-): Promise<{ imported: number; skipped: number; fullSyncStartedAt: number }> {
+): Promise<{ imported: number; skipped: number; fullSyncStartedAt: number; warnings: ScanWarning[] }> {
   const fullSyncStartedAt = Date.now()
   process.stderr.write('OSV: downloading npm dump...\n')
   const res = await fetch(OSV_NPM_URL)
@@ -50,6 +52,7 @@ export async function syncOsv(
     const total = entries.length
 
     const allAdvisories: Advisory[] = []
+    const allWarnings: ScanWarning[] = []
 
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i]
@@ -63,7 +66,7 @@ export async function syncOsv(
         continue
       }
 
-      const advisories = osvEntryToAdvisories(parsed)
+      const { advisories, warnings } = osvEntryToAdvisories(parsed)
       if (advisories.length === 0) {
         skipped++
         continue
@@ -73,6 +76,7 @@ export async function syncOsv(
         allAdvisories.push(advisory)
         imported++
       }
+      allWarnings.push(...warnings)
       if (onProgress && imported % 500 === 0) onProgress({ parsed: imported, total })
     }
 
@@ -88,43 +92,53 @@ export async function syncOsv(
     }
 
     process.stderr.write(`OSV: imported ${imported} advisories (${skipped} skipped)\n`)
-    return { imported, skipped, fullSyncStartedAt }
+    return { imported, skipped, fullSyncStartedAt, warnings: allWarnings }
   } finally {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true })
   }
 }
 
-function osvEntryToAdvisories(entry: OsvEntry): Advisory[] {
+function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[]; warnings: ScanWarning[] } {
   const allAffected = entry.affected?.filter(
     (a) => a.package.ecosystem === 'npm' && a.package.name,
   ) ?? []
 
-  if (allAffected.length === 0) return []
+  if (allAffected.length === 0) return { advisories: [], warnings: [] }
 
   const id = getBestId(entry)
   const type: 'cve' | 'mal' = id.startsWith('MAL-') ? 'mal' : 'cve'
 
-  return allAffected.flatMap((affected): Advisory[] => {
+  const advisories: Advisory[] = []
+  const warnings: ScanWarning[] = []
+
+  for (const affected of allAffected) {
     const semverRanges = (affected.ranges ?? [])
       .filter((r) => r.type === 'SEMVER')
       .flatMap((r) => eventsToRanges(r.events))
 
-    if (semverRanges.length === 0) return []
+    if (semverRanges.length === 0) continue
 
     const url = `https://osv.dev/vulnerability/${entry.id}`
     const ghsaMatch = entry.id.match(/^GHSA-/i) ? entry.id : entry.aliases?.find((a) => a.match(/^GHSA-/i))
     const canonicalId = ghsaMatch ? ghsaMatch.toUpperCase() : id
-    return [{
+    const { severity, warning } = mapSeverity({
+      label: affected.database_specific?.severity ?? entry.database_specific?.severity,
+      advisoryId: id,
+    })
+    if (warning) warnings.push(warning)
+    advisories.push({
       id,
       canonicalId,
       type,
       packageName: affected.package.name,
       ranges: semverRanges,
-      severity: mapSeverity(affected.database_specific?.severity ?? entry.database_specific?.severity),
+      severity,
       title: entry.summary ?? id,
       url,
-    }]
-  })
+    })
+  }
+
+  return { advisories, warnings }
 }
 
 function getBestId(entry: OsvEntry): string {
@@ -159,10 +173,3 @@ export function eventsToRanges(events: OsvEvent[]): SemverRange[] {
   return ranges
 }
 
-function mapSeverity(s: string | undefined): Severity {
-  const u = s?.toUpperCase() ?? ''
-  if (u === 'CRITICAL') return 'critical'
-  if (u === 'HIGH') return 'high'
-  if (u === 'MODERATE' || u === 'MEDIUM') return 'moderate'
-  return 'low'
-}

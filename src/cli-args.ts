@@ -1,13 +1,14 @@
 export type HelpTopic = 'scan' | 'check' | 'update'
 
 export type ParsedArgs =
-  | { command: 'scan'; projectDir: string; format: string; failOn: string | null }
-  | { command: 'check'; target: string; format: string; failOn: string | null; dir: string | null }
+  | { command: 'scan'; projectDir: string; format: string; failOn: string | null; noSync: boolean }
+  | { command: 'check'; target: string; format: string; failOn: string | null; dir: string | null; noSync: boolean }
   | { command: 'update' }
   | { command: 'help'; topic?: HelpTopic }
   | { command: 'unknown'; raw: string | undefined }
 
 const KNOWN_FLAGS = new Set(['--format', '--fail-on', '--dir'])
+const KNOWN_BOOLEAN_FLAGS = new Set(['--offline', '--no-sync'])
 const KNOWN_COMMANDS: ReadonlySet<HelpTopic> = new Set(['scan', 'check', 'update'])
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -18,11 +19,15 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   const positional: string[] = []
   const flags: Record<string, string> = {}
+  const boolFlags = new Set<string>()
 
   let i = 0
   while (i < argv.length) {
     const arg = argv[i]
-    if (KNOWN_FLAGS.has(arg)) {
+    if (KNOWN_BOOLEAN_FLAGS.has(arg)) {
+      boolFlags.add(arg)
+      i += 1
+    } else if (KNOWN_FLAGS.has(arg)) {
       const value = argv[i + 1]
       if (value === undefined) {
         process.stderr.write(`Warning: ${arg} flag has no value, ignoring\n`)
@@ -39,11 +44,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   const format = flags['--format'] ?? 'table'
   const failOn = flags['--fail-on'] ?? null
+  const noSync = boolFlags.has('--offline') || boolFlags.has('--no-sync')
 
   const cmd = positional[0]
 
   if (cmd === undefined || cmd === 'scan') {
-    return { command: 'scan', projectDir: positional[1] ?? '.', format, failOn }
+    return { command: 'scan', projectDir: positional[1] ?? '.', format, failOn, noSync }
   }
 
   if (cmd === 'update') {
@@ -53,7 +59,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (cmd === 'check') {
     const target = positional[1] ?? ''
     const dir = flags['--dir'] ?? null
-    return { command: 'check', target, format, failOn, dir }
+    return { command: 'check', target, format, failOn, dir, noSync }
   }
 
   return { command: 'unknown', raw: cmd }

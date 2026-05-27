@@ -564,3 +564,13 @@ describe('pruneStaleAdvisories', () => {
     expect(getAdvisoriesForPackage(database, 'pkg-gh')).toHaveLength(1)
   })
 })
+
+// ─── D5T: busy_timeout PRAGMA ────────────────────────────────────────────────
+
+describe('D5T: openDb sets busy_timeout', () => {
+  it('sets busy_timeout to 5000ms after WAL pragma', () => {
+    const database = makeDb()
+    const timeout = database.pragma('busy_timeout', { simple: true }) as number
+    expect(timeout).toBe(5000)
+  })
+})

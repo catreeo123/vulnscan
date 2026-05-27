@@ -71,6 +71,51 @@ describe('checkPackage', () => {
   })
 })
 
+// ─── D5T: noSync / offline mode ──────────────────────────────────────────────
+
+describe('D5T: noSync flag skips syncIfStale', () => {
+  it('runScan with noSync=true does not call syncIfStale', async () => {
+    vi.mocked(syncIfStale).mockClear()
+    await runScan({ lockfileContent: emptyLockfile, store, config: baseConfig, noSync: true })
+    expect(syncIfStale).not.toHaveBeenCalled()
+  })
+
+  it('checkPackage with noSync=true does not call syncIfStale', async () => {
+    vi.mocked(syncIfStale).mockClear()
+    await checkPackage({ name: 'lodash', version: '4.17.20', store, config: baseConfig, noSync: true })
+    expect(syncIfStale).not.toHaveBeenCalled()
+  })
+
+  it('runScan with noSync=true emits informational warning when cursors are null (never synced)', async () => {
+    // InMemoryAdvisoryStore returns null for getLastSyncedAt by default
+    const result = await runScan({ lockfileContent: emptyLockfile, store, config: baseConfig, noSync: true })
+    expect(result.warnings.some((w) => w.class === 'informational')).toBe(true)
+    expect(result.warnings.some((w) => w.message.includes('never been synced'))).toBe(true)
+  })
+
+  it('runScan with noSync=true emits informational warning when cursors are older than 7 days', async () => {
+    const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000
+    store.setLastSyncedAt('osv', eightDaysAgo)
+    store.setLastSyncedAt('github', eightDaysAgo)
+    const result = await runScan({ lockfileContent: emptyLockfile, store, config: baseConfig, noSync: true })
+    expect(result.warnings.some((w) => w.class === 'informational')).toBe(true)
+  })
+
+  it('runScan with noSync=true emits no staleness warning when cursors are fresh', async () => {
+    store.setLastSyncedAt('osv', Date.now())
+    store.setLastSyncedAt('github', Date.now())
+    const result = await runScan({ lockfileContent: emptyLockfile, store, config: baseConfig, noSync: true })
+    expect(result.warnings.filter((w) => w.class === 'informational').length).toBe(0)
+  })
+
+  it('checkPackage with noSync=true includes warnings in result', async () => {
+    // Cursors null → should warn
+    const result = await checkPackage({ name: 'lodash', version: '4.17.20', store, config: baseConfig, noSync: true })
+    expect(result.warnings).toBeDefined()
+    expect(result.warnings.some((w) => w.class === 'informational')).toBe(true)
+  })
+})
+
 describe('runScan', () => {
   it('TEST 1: empty lockfile → empty findings, advisoryCount reflects seeded DB', async () => {
     store.upsert({

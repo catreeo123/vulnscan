@@ -1,6 +1,7 @@
-import type { Advisory, AdvisoryStore, SemverRange, Severity } from './types.js'
+import type { Advisory, AdvisoryStore, SemverRange } from './types.js'
 import { incomplete } from './warnings.js'
 import type { ScanWarning } from './warnings.js'
+import { mapSeverity } from './severity-mapper.js'
 
 const GITHUB_API = 'https://api.github.com'
 const PER_PAGE = 100
@@ -78,11 +79,12 @@ export async function syncGithubAdvisories(
       if (!Array.isArray(items) || items.length === 0) break
 
       for (const item of items) {
-        const advisories = ghAdvisoryToAdvisories(item, pass.advisoryType)
+        const { advisories, warnings: itemWarnings } = ghAdvisoryToAdvisories(item, pass.advisoryType)
         for (const advisory of advisories) {
           store.upsert(advisory)
           imported++
         }
+        warnings.push(...itemWarnings)
         if (advisories.length === 0) skipped++
       }
 
@@ -106,14 +108,18 @@ function parseLinkNext(link: string | null): string | null {
   return match ? match[1] : null
 }
 
-function ghAdvisoryToAdvisories(item: GhAdvisory, advisoryType: Advisory['type']): Advisory[] {
+function ghAdvisoryToAdvisories(
+  item: GhAdvisory,
+  advisoryType: Advisory['type'],
+): { advisories: Advisory[]; warnings: ScanWarning[] } {
   const npmVulns = item.vulnerabilities.filter((v) => v.package.ecosystem === 'npm')
-  if (npmVulns.length === 0) return []
+  if (npmVulns.length === 0) return { advisories: [], warnings: [] }
 
   const id = item.cve_id ?? item.ghsa_id
-  const severity = mapSeverity(item.severity)
+  const { severity, warning } = mapSeverity({ label: item.severity, advisoryId: id })
+  const itemWarnings: ScanWarning[] = warning ? [warning] : []
 
-  return npmVulns
+  const advisories = npmVulns
     .filter((v) => v.package.name && v.vulnerable_version_range)
     .map((v): Advisory => {
       const ghsaMatch = item.html_url.match(/GHSA-[a-z0-9]+-[a-z0-9]+-[a-z0-9]+/i)
@@ -129,20 +135,14 @@ function ghAdvisoryToAdvisories(item: GhAdvisory, advisoryType: Advisory['type']
         url: item.html_url,
       }
     })
+
+  return { advisories, warnings: itemWarnings }
 }
 
 function parseGhRange(rangeStr: string): SemverRange[] {
   // GitHub Advisory range strings are valid semver range expressions.
   // Store as rawRange so AffectedRangeMatcher can use them directly.
   return [{ rawRange: rangeStr }]
-}
-
-function mapSeverity(s: string): Severity {
-  const u = s.toUpperCase()
-  if (u === 'CRITICAL') return 'critical'
-  if (u === 'HIGH') return 'high'
-  if (u === 'MODERATE' || u === 'MEDIUM') return 'moderate'
-  return 'low'
 }
 
 export async function fetchWithRetry(

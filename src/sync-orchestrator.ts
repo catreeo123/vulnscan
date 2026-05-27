@@ -44,7 +44,8 @@ export async function syncIfStale(
   }
 
   if (osvStillStale) {
-    const { fullSyncStartedAt } = await syncOsv(store)
+    const { fullSyncStartedAt, warnings: osvWarnings } = await syncOsv(store)
+    warnings.push(...osvWarnings)
     store.pruneStale(fullSyncStartedAt, GRACE_PERIOD_MS)
     store.setLastSyncedAt('osv', Date.now())
   }

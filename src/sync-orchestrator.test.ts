@@ -2,7 +2,7 @@ import { vi, it, describe, expect, beforeEach } from 'vitest'
 import type { AdvisoryStore } from './types.js'
 
 vi.mock('./osv-sync.js', () => ({
-  syncOsv: vi.fn().mockResolvedValue({ imported: 0, skipped: 0, fullSyncStartedAt: 1_000_000_000_000 }),
+  syncOsv: vi.fn().mockResolvedValue({ imported: 0, skipped: 0, fullSyncStartedAt: 1_000_000_000_000, warnings: [] }),
 }))
 vi.mock('./github-advisory-sync.js', () => ({
   syncGithubAdvisories: vi.fn().mockResolvedValue({ imported: 0, skipped: 0, warnings: [] }),
@@ -116,16 +116,13 @@ describe('D8: clock-skew guard', () => {
   it('treats now < lastSyncedAt as stale and emits informational warning (GitHub)', async () => {
     const future = Date.now() + 10 * 60 * 60 * 1000
     // OSV is fresh (past), GitHub is future
+    // Calls: 1=osv initial, 2=github initial, 3=osv double-check, 4=github double-check, 5+=since lookup
     let callCount = 0
     const store = makeStore({
       getLastSyncedAt: vi.fn().mockImplementation(() => {
         callCount++
-        if (callCount <= 2) {
-          // First two calls: osv and github staleness check — osv is fresh, github is future
-          return callCount === 1 ? Date.now() - 1000 : future
-        }
-        // Third call: since lookup in syncGithubSafe
-        return future
+        if (callCount === 1) return Date.now() - 1000 // osv: fresh
+        return future // github initial, double-checks, since lookup: all future
       }),
     })
 
@@ -133,5 +130,45 @@ describe('D8: clock-skew guard', () => {
     const warnings = await syncIfStale(store, 24 * 60 * 60 * 1000)
 
     expect(warnings.some((w) => w.class === 'informational' && w.message.includes('clock skew'))).toBe(true)
+  })
+})
+
+// ─── D5T: double-checked staleness ───────────────────────────────────────────
+
+describe('D5T: double-checked staleness', () => {
+  it('skips sync when a peer has refreshed cursors between initial check and double-check', async () => {
+    const { syncOsv } = await import('./osv-sync.js')
+    const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+    vi.mocked(syncOsv).mockClear()
+    vi.mocked(syncGithubAdvisories).mockClear()
+
+    // Initial check sees both stale (null), double-check sees both fresh (now)
+    let callCount = 0
+    const store = makeStore({
+      getLastSyncedAt: vi.fn().mockImplementation(() => {
+        callCount++
+        if (callCount <= 2) return null          // initial staleness decision: stale
+        return Date.now()                        // double-check: peer already updated
+      }),
+    })
+
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+    const result = await syncIfStale(store)
+
+    expect(result).toEqual([])
+    expect(vi.mocked(syncOsv)).not.toHaveBeenCalled()
+    expect(vi.mocked(syncGithubAdvisories)).not.toHaveBeenCalled()
+  })
+
+  it('still syncs when double-check confirms stale (cursors stay null)', async () => {
+    const { syncOsv } = await import('./osv-sync.js')
+    vi.mocked(syncOsv).mockClear()
+
+    // Both initial and double-check return null
+    const store = makeStore()
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+    await syncIfStale(store)
+
+    expect(vi.mocked(syncOsv)).toHaveBeenCalledTimes(1)
   })
 })

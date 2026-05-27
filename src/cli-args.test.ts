@@ -23,6 +23,7 @@ describe('parseArgs', () => {
       projectDir: '.',
       format: 'table',
       failOn: null,
+      noSync: false,
     })
   })
 
@@ -32,6 +33,7 @@ describe('parseArgs', () => {
       projectDir: '.',
       format: 'json',
       failOn: null,
+      noSync: false,
     })
   })
 
@@ -41,6 +43,7 @@ describe('parseArgs', () => {
       projectDir: '.',
       format: 'table',
       failOn: null,
+      noSync: false,
     })
   })
 
@@ -50,6 +53,7 @@ describe('parseArgs', () => {
       projectDir: '.',
       format: 'table',
       failOn: null,
+      noSync: false,
     })
   })
 
@@ -64,6 +68,7 @@ describe('parseArgs', () => {
       format: 'table',
       failOn: null,
       dir: null,
+      noSync: false,
     })
   })
 
@@ -74,6 +79,7 @@ describe('parseArgs', () => {
       format: 'table',
       failOn: null,
       dir: null,
+      noSync: false,
     })
   })
 
@@ -84,6 +90,7 @@ describe('parseArgs', () => {
       format: 'table',
       failOn: null,
       dir: '/tmp/x',
+      noSync: false,
     })
   })
 
@@ -121,6 +128,7 @@ describe('parseArgs', () => {
       projectDir: '.',
       format: 'table',
       failOn: 'critical,high',
+      noSync: false,
     })
   })
 
@@ -130,6 +138,49 @@ describe('parseArgs', () => {
       projectDir: '.',
       format: 'json',
       failOn: null,
+      noSync: false,
+    })
+  })
+
+  it('--offline sets noSync=true on scan', () => {
+    expect(parseArgs(['scan', '.', '--offline'])).toEqual({
+      command: 'scan',
+      projectDir: '.',
+      format: 'table',
+      failOn: null,
+      noSync: true,
+    })
+  })
+
+  it('--no-sync alias sets noSync=true on scan', () => {
+    expect(parseArgs(['scan', '.', '--no-sync'])).toEqual({
+      command: 'scan',
+      projectDir: '.',
+      format: 'table',
+      failOn: null,
+      noSync: true,
+    })
+  })
+
+  it('--offline sets noSync=true on check', () => {
+    expect(parseArgs(['check', 'lodash@4.17.20', '--offline'])).toEqual({
+      command: 'check',
+      target: 'lodash@4.17.20',
+      format: 'table',
+      failOn: null,
+      dir: null,
+      noSync: true,
+    })
+  })
+
+  it('--no-sync does not swallow next positional as value', () => {
+    // Boolean flag should not consume argv[i+1]
+    expect(parseArgs(['scan', '--no-sync', '.'])).toEqual({
+      command: 'scan',
+      projectDir: '.',
+      format: 'table',
+      failOn: null,
+      noSync: true,
     })
   })
 })
@@ -150,7 +201,7 @@ describe('parseArgs — orphan flag warning (S5)', () => {
   it('preserves default failOn (null) when --fail-on has no value', () => {
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     const result = parseArgs(['scan', '.', '--fail-on'])
-    expect(result).toMatchObject({ command: 'scan', failOn: null })
+    expect(result).toMatchObject({ command: 'scan', failOn: null, noSync: false })
   })
 
   it('emits a stderr warning when --format has no value', () => {
