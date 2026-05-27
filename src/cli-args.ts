@@ -4,6 +4,7 @@ export type ParsedArgs =
   | { command: 'scan'; projectDir: string; format: string; failOn: string | null; noSync: boolean }
   | { command: 'check'; target: string; format: string; failOn: string | null; dir: string | null; noSync: boolean }
   | { command: 'update' }
+  | { command: 'skill-install' }
   | { command: 'help'; topic?: HelpTopic }
   | { command: 'unknown'; raw: string | undefined }
 
@@ -54,6 +55,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   if (cmd === 'update') {
     return { command: 'update' }
+  }
+
+  if (cmd === 'skill' && positional[1] === 'install') {
+    return { command: 'skill-install' }
   }
 
   if (cmd === 'check') {

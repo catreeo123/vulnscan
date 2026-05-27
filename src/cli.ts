@@ -97,7 +97,14 @@ async function main(): Promise<void> {
     return
   }
 
-  process.stderr.write(`Unknown command: ${parsed.raw ?? ''}\nUsage: vulnscan [scan|check|update] [options]\n`)
+  if (parsed.command === 'skill-install') {
+    const { installSkill } = await import('./skill-installer.js')
+    installSkill()
+    return
+  }
+
+  const raw = parsed.command === 'unknown' ? (parsed.raw ?? '') : ''
+  process.stderr.write(`Unknown command: ${raw}\nUsage: vulnscan [scan|check|update|skill] [options]\n`)
   process.exit(1)
 }
 
@@ -162,6 +169,7 @@ Usage:
   vulnscan [scan] [<dir>] [--format json|table] [--fail-on critical,high,...] [--offline]
   vulnscan check <pkg@version> [--dir <path>] [--format json|table] [--fail-on ...] [--offline]
   vulnscan update
+  vulnscan skill install         Register the /vulnscan Claude Code skill
   vulnscan <command> --help     Show usage for a specific subcommand
   vulnscan --help
 

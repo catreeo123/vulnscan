@@ -10,7 +10,8 @@
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist",
+    "skill"
   ],
   "scripts": {
     "test": "vitest run",
