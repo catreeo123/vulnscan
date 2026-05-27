@@ -23,6 +23,7 @@ export async function syncIfStale(
   if (osvStale) {
     const { fullSyncStartedAt } = await syncOsv(store)
     store.pruneStale(fullSyncStartedAt, GRACE_PERIOD_MS)
+    store.setLastSyncedAt('osv', Date.now())
   }
   if (ghStale) await syncGithubSafe(store)
   return true
@@ -34,6 +35,7 @@ export async function runSync(store: AdvisoryStore): Promise<void> {
   const { fullSyncStartedAt } = await syncOsv(store)
   await syncGithubSafe(store)
   store.pruneStale(fullSyncStartedAt, GRACE_PERIOD_MS)
+  store.setLastSyncedAt('osv', Date.now())
 }
 
 async function syncGithubSafe(store: AdvisoryStore): Promise<void> {

@@ -87,7 +87,6 @@ export async function syncOsv(
       }
     }
 
-    store.setLastSyncedAt('osv', Date.now())
     process.stderr.write(`OSV: imported ${imported} advisories (${skipped} skipped)\n`)
     return { imported, skipped, fullSyncStartedAt }
   } finally {

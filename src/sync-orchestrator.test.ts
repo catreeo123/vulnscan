@@ -1,4 +1,4 @@
-import { vi, it, expect, beforeEach } from 'vitest'
+import { vi, it, describe, expect, beforeEach } from 'vitest'
 import type { AdvisoryStore } from './types.js'
 
 vi.mock('./osv-sync.js', () => ({
@@ -38,4 +38,27 @@ it('store error in getLastSyncedAt for since-lookup propagates out of syncIfStal
 
   const { syncIfStale } = await import('./sync-orchestrator.js')
   await expect(syncIfStale(store)).rejects.toThrow('db locked')
+})
+
+// ─── D2: OSV cursor is written by orchestrator AFTER pruneStale, not inside syncOsv ───
+
+describe('D2: OSV cursor-after-prune ordering', () => {
+  it('syncIfStale: cursor is NOT updated when pruneStale throws', async () => {
+    const store = makeStore({
+      pruneStale: vi.fn().mockImplementation(() => {
+        throw new Error('prune failed')
+      }),
+    })
+
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+    await expect(syncIfStale(store)).rejects.toThrow('prune failed')
+    expect(vi.mocked(store.setLastSyncedAt)).not.toHaveBeenCalledWith('osv', expect.any(Number))
+  })
+
+  it('syncIfStale: cursor IS updated with osv source after pruneStale succeeds', async () => {
+    const store = makeStore()
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+    await syncIfStale(store)
+    expect(vi.mocked(store.setLastSyncedAt)).toHaveBeenCalledWith('osv', expect.any(Number))
+  })
 })
