@@ -1,8 +1,14 @@
 import type { Advisory, AdvisoryStore, SemverRange, Severity } from './types.js'
+import { incomplete } from './warnings.js'
+import type { ScanWarning } from './warnings.js'
 
 const GITHUB_API = 'https://api.github.com'
 const PER_PAGE = 100
 const MAX_PAGES = 1000
+
+export type SyncGithubOptions = {
+  maxPages?: number
+}
 
 type GhVuln = {
   package: { ecosystem: string; name: string }
@@ -23,7 +29,9 @@ export async function syncGithubAdvisories(
   store: AdvisoryStore,
   since?: number,
   onProgress?: (imported: number) => void,
-): Promise<{ imported: number; skipped: number }> {
+  options?: SyncGithubOptions,
+): Promise<{ imported: number; skipped: number; warnings: ScanWarning[] }> {
+  const maxPages = options?.maxPages ?? MAX_PAGES
   const token = process.env.GITHUB_TOKEN
   if (!token) {
     process.stderr.write('GitHub Advisory: no GITHUB_TOKEN — syncing at 60 req/hr (slow)\n')
@@ -37,6 +45,7 @@ export async function syncGithubAdvisories(
 
   let imported = 0
   let skipped = 0
+  const warnings: ScanWarning[] = []
 
   process.stderr.write('GitHub Advisory: paginating npm advisories...\n')
 
@@ -57,8 +66,9 @@ export async function syncGithubAdvisories(
 
     while (nextUrl) {
       page++
-      if (page > MAX_PAGES) {
-        process.stderr.write(`\nGitHub Advisory: reached page limit (${MAX_PAGES}), stopping\n`)
+      if (page > maxPages) {
+        process.stderr.write(`\nGitHub Advisory: reached page limit (${maxPages}), stopping\n`)
+        warnings.push(incomplete(`GitHub Advisory sync reached page limit (${maxPages}); results may be incomplete`))
         break
       }
 
@@ -87,7 +97,7 @@ export async function syncGithubAdvisories(
   // preserves the cursor so the next sync retries from the same point.
   store.setLastSyncedAt('github', Date.now())
   process.stderr.write(`GitHub Advisory: imported ${imported} advisories (${skipped} items skipped)\n`)
-  return { imported, skipped }
+  return { imported, skipped, warnings }
 }
 
 function parseLinkNext(link: string | null): string | null {

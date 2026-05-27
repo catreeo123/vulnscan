@@ -3,7 +3,7 @@ import { syncIfStale } from './sync-orchestrator.js'
 import { InMemoryAdvisoryStore } from './advisory-store-memory.js'
 
 vi.mock('./sync-orchestrator.js', () => ({
-  syncIfStale: vi.fn().mockResolvedValue(undefined),
+  syncIfStale: vi.fn().mockResolvedValue([]),
 }))
 
 // imported after mock is set up

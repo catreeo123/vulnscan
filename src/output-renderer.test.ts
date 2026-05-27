@@ -268,9 +268,17 @@ describe('renderGrouped', () => {
 // ── renderJson ────────────────────────────────────────────────────────────────
 
 describe('renderJson', () => {
+  // ── D8: schemaVersion ────────────────────────────────────────────────────
+
+  it('includes schemaVersion: "1" as the first key', () => {
+    const out = JSON.parse(renderJson([], []))
+    expect(out.schemaVersion).toBe('1')
+    expect(Object.keys(out)[0]).toBe('schemaVersion')
+  })
+
   it('returns wrapper with empty findings and warnings when nothing provided', () => {
     const out = JSON.parse(renderJson([], []))
-    expect(out).toEqual({ findings: [], warnings: [] })
+    expect(out).toEqual({ schemaVersion: '1', findings: [], warnings: [] })
   })
 
   it('includes name, version, advisory, and fix field in each entry', () => {

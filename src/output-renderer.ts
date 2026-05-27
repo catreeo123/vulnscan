@@ -45,6 +45,7 @@ function firstFixedDisplay(ranges: Array<{ introduced?: string; fixed?: string; 
 
 export function renderJson(findings: Finding[], warnings: ScanWarning[]): string {
   const out = {
+    schemaVersion: '1',
     findings: findings.map((f) => ({
       name: f.name,
       version: f.version,

@@ -2,16 +2,26 @@
 
 Produced by `vulnscan scan --format json` and `vulnscan check --format json`.
 
+## Versioning
+
+The top-level `schemaVersion` field lets consumers guard against breaking wire-format changes.
+**Major bumps only** — a new `schemaVersion` value signals a breaking change (removed or renamed fields). Additive changes (new optional fields) do not bump the version.
+
+Current version: `"1"`
+
 ## Top-level shape
 
 ```json
 {
+  "schemaVersion": "1",
   "findings": [ ...Finding ],
   "warnings": [ "string" ]
 }
 ```
 
-`warnings` — non-fatal notices (e.g. skipped git-sourced deps, skipped npm-aliased deps). Always present; empty array when no warnings.
+`schemaVersion` — wire-format version. Pin consumers to this value; reject on mismatch.
+
+`warnings` — non-fatal notices (e.g. skipped git-sourced deps, skipped npm-aliased deps, clock-skew detected, advisory sync page limit reached). Always present; empty array when no warnings.
 
 ## Finding
 
