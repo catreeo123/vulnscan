@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.9] — 2026-05-27
+
+### Fixes
+
+- **Bootstrap DB download now targets the `db-latest` release tag** — `RELEASES_API` in `bootstrap.ts` changed from `releases/latest` to `releases/tags/db-latest`. The daily CI workflow publishes the advisory DB under the `db-latest` tag; `releases/latest` pointed at the most recent semver release which does not include the DB asset. Closes #29.
+
 ## [0.2.8] — 2026-05-27
 
 ### Chores

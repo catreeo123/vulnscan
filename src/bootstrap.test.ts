@@ -135,4 +135,30 @@ describe('bootstrapDb', () => {
     expect(result).toBe(false)
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('network error'))
   })
+
+  it('fetches releases from the db-latest tag URL', async () => {
+    vi.mocked(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ assets: [] }),
+    })
+
+    await bootstrapDb()
+
+    const fetchCall = vi.mocked(global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(fetchCall[0]).toContain('db-latest')
+  })
+
+  it('returns false and logs fallback message when no asset found', async () => {
+    vi.mocked(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ assets: [] }),
+    })
+
+    const result = await bootstrapDb()
+
+    expect(result).toBe(false)
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('falling back to full sync'),
+    )
+  })
 })

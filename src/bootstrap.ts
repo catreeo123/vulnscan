@@ -6,7 +6,7 @@ import { Readable } from 'node:stream'
 import { DB_PATH } from './local-db.js'
 import { scrubSecrets } from './secrets.js'
 
-const RELEASES_API = 'https://api.github.com/repos/catreeo123/vulnscan/releases/latest'
+const RELEASES_API = 'https://api.github.com/repos/catreeo123/vulnscan/releases/tags/db-latest'
 const ASSET_NAME = 'db.sqlite.gz'
 
 export async function bootstrapDb(): Promise<boolean> {
