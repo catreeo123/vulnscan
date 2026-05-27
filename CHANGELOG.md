@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.4] — 2026-05-27
+
+### Fixes
+
+- **Defence-in-depth: loop-push for unbounded warning arrays** — replaced four `warnings.push(...big)` spread sites in `sync-orchestrator.ts` and `scanner.ts` with `for…of` loops. V8's function-argument limit (~125k) meant that any source returning 200k+ warnings would crash with `RangeError: Maximum call stack size exceeded`. The root cause (OSV producing 100k severity warnings) is fixed in #23 / v0.2.3; this change ensures no future unbounded warning source can re-introduce the same crash class. Closes #24.
+
 ## [0.2.3] — 2026-05-27
 
 ### Fixes

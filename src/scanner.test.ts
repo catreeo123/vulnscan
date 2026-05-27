@@ -110,6 +110,28 @@ describe('D5T: noSync flag skips syncIfStale', () => {
   })
 })
 
+// ─── #24: loop-push regression tests ─────────────────────────────────────────
+
+describe('#24: loop-push — runScan with 200k sync warnings does not overflow stack', () => {
+  it('resolves when sync stub returns 200k warnings (no RangeError)', async () => {
+    const hugeWarnings = Array.from({ length: 200_000 }, () => ({ class: 'informational' as const, message: 'x' }))
+    const syncStub = vi.fn().mockResolvedValue(hugeWarnings)
+    await expect(
+      runScan({ lockfileContent: emptyLockfile, store, config: baseConfig, sync: syncStub }),
+    ).resolves.not.toThrow()
+  })
+})
+
+describe('#24: loop-push — checkPackage with 200k sync warnings does not overflow stack', () => {
+  it('resolves when sync stub returns 200k warnings (no RangeError)', async () => {
+    const hugeWarnings = Array.from({ length: 200_000 }, () => ({ class: 'informational' as const, message: 'x' }))
+    const syncStub = vi.fn().mockResolvedValue(hugeWarnings)
+    await expect(
+      checkPackage({ name: 'lodash', version: '4.17.20', store, config: baseConfig, sync: syncStub }),
+    ).resolves.not.toThrow()
+  })
+})
+
 describe('runScan', () => {
   it('TEST 1: empty lockfile → empty findings, advisoryCount reflects seeded DB', async () => {
     store.upsert({

@@ -191,6 +191,39 @@ describe('D10: runSync surfaces page-limit warnings to stderr', () => {
   })
 })
 
+// ─── #24: push(...big) RangeError regression tests ───────────────────────────
+
+describe('#24: loop-push — huge OSV warning array does not overflow stack', () => {
+  it('syncIfStale resolves when syncOsv returns 200k warnings (no RangeError)', async () => {
+    const { syncOsv } = await import('./osv-sync.js')
+    vi.mocked(syncOsv).mockResolvedValueOnce({
+      imported: 0,
+      skipped: 0,
+      fullSyncStartedAt: 1_000_000_000_000,
+      warnings: Array.from({ length: 200_000 }, () => ({ class: 'informational' as const, message: 'x' })),
+    })
+
+    const store = makeStore()
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+    await expect(syncIfStale(store)).resolves.not.toThrow()
+  })
+})
+
+describe('#24: loop-push — huge GitHub warning array does not overflow stack', () => {
+  it('syncIfStale resolves when syncGithubAdvisories returns 200k warnings (no RangeError)', async () => {
+    const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+    vi.mocked(syncGithubAdvisories).mockResolvedValueOnce({
+      imported: 0,
+      skipped: 0,
+      warnings: Array.from({ length: 200_000 }, () => ({ class: 'informational' as const, message: 'x' })),
+    })
+
+    const store = makeStore()
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+    await expect(syncIfStale(store)).resolves.not.toThrow()
+  })
+})
+
 // ─── D5T: double-checked staleness ───────────────────────────────────────────
 
 describe('D5T: double-checked staleness', () => {

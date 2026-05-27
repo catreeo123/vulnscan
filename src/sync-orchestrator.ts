@@ -45,13 +45,13 @@ export async function syncIfStale(
 
   if (osvStillStale) {
     const { fullSyncStartedAt, warnings: osvWarnings } = await syncOsv(store)
-    warnings.push(...osvWarnings)
+    for (const w of osvWarnings) warnings.push(w)
     store.pruneStale(fullSyncStartedAt, GRACE_PERIOD_MS)
     store.setLastSyncedAt('osv', Date.now())
   }
   if (ghStillStale) {
     const ghWarnings = await syncGithubSafe(store)
-    warnings.push(...ghWarnings)
+    for (const w of ghWarnings) warnings.push(w)
   }
   return warnings
 }

@@ -72,10 +72,10 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
 
   const extraWarnings: ScanWarning[] = []
   if (noSync) {
-    extraWarnings.push(...offlineStalenessWarnings(store))
+    for (const w of offlineStalenessWarnings(store)) extraWarnings.push(w)
   } else {
     const syncWarnings = await doSync(store, config.stalenessMs)
-    extraWarnings.push(...syncWarnings)
+    for (const w of syncWarnings) extraWarnings.push(w)
   }
 
   const allFindings: Finding[] = []
@@ -104,10 +104,10 @@ export async function checkPackage(input: CheckInput): Promise<CheckResult> {
 
   const warnings: ScanWarning[] = []
   if (noSync) {
-    warnings.push(...offlineStalenessWarnings(store))
+    for (const w of offlineStalenessWarnings(store)) warnings.push(w)
   } else {
     const syncWarnings = await doSync(store, config.stalenessMs)
-    warnings.push(...syncWarnings)
+    for (const w of syncWarnings) warnings.push(w)
   }
 
   const advisories = store.getForPackage(name)
