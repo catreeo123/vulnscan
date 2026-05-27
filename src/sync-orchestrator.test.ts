@@ -180,20 +180,14 @@ describe('D10: runSync surfaces page-limit warnings to stderr', () => {
       warnings: [{ class: 'incomplete', message: 'GitHub Advisory sync reached page limit (2); results may be incomplete' }],
     })
 
-    // Intercept stderr directly — vi.spyOn on Node.js stream methods is unreliable.
-    const stderrWrites: string[] = []
-    const origWrite = process.stderr.write.bind(process.stderr) as typeof process.stderr.write
-    process.stderr.write = ((chunk: string | Uint8Array, ...args: unknown[]) => {
-      stderrWrites.push(String(chunk))
-      return (origWrite as (...a: unknown[]) => boolean)(chunk, ...args)
-    }) as typeof process.stderr.write
-
+    const written: string[] = []
+    const origWrite = process.stderr.write.bind(process.stderr)
+    ;(process.stderr as any).write = (chunk: unknown) => { written.push(String(chunk)); return true }
     const store = makeStore()
     await runSync(store)
-    process.stderr.write = origWrite
+    ;(process.stderr as any).write = origWrite
 
-    const written = stderrWrites.join('')
-    expect(written).toMatch(/page limit/)
+    expect(written.join('')).toMatch(/page limit/)
   })
 })
 
