@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { renderGrouped, renderJson } from './output-renderer.js'
 import type { Finding } from './types.js'
+import { incomplete } from './warnings.js'
 
 // Minimal advisory factory
 function mkAdvisory(overrides: Partial<{
@@ -223,7 +224,7 @@ describe('renderGrouped', () => {
   // ── Behavior 10: Warnings section ────────────────────────────────────────
 
   it('renders warnings before findings when warnings are present', () => {
-    const output = renderGrouped([mkFinding()], ['advisory DB may be stale'])
+    const output = renderGrouped([mkFinding()], [incomplete('advisory DB may be stale')])
     expect(output).toContain('! advisory DB may be stale')
     expect(output.indexOf('advisory DB')).toBeLessThan(output.indexOf('pkg'))
   })
@@ -299,7 +300,9 @@ describe('renderJson', () => {
   })
 
   it('surfaces warnings in the wrapper alongside findings', () => {
-    const out = JSON.parse(renderJson([mkFinding()], ['lockfile v1 not supported', 'git-sourced dep skipped']))
+    const out = JSON.parse(
+      renderJson([mkFinding()], [incomplete('lockfile v1 not supported'), incomplete('git-sourced dep skipped')]),
+    )
     expect(out.findings).toHaveLength(1)
     expect(out.warnings).toEqual(['lockfile v1 not supported', 'git-sourced dep skipped'])
   })

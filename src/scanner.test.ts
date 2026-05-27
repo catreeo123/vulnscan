@@ -135,6 +135,6 @@ describe('runScan', () => {
     const result = await runScan({ lockfileContent: v1Lockfile, store, config: baseConfig })
 
     expect(result.findings).toHaveLength(0)
-    expect(result.warnings.some((w) => w.includes('v1'))).toBe(true)
+    expect(result.warnings.some((w) => w.message.includes('v1'))).toBe(true)
   })
 })

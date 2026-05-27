@@ -91,20 +91,20 @@ describe('parseLockfile', () => {
     expect(deps).not.toContainEqual(expect.objectContaining({ name: 'lodash' }))
     expect(deps).toContainEqual({ name: 'semver', version: '7.6.0' })
     expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toMatch(/lodash-alias/)
+    expect(warnings[0].message).toMatch(/lodash-alias/)
   })
 
   it('malformed package.json emits a warning and does not crash', () => {
     const { deps, warnings } = parseLockfile(v2Fixture, 'not valid json {{{')
     expect(deps.length).toBeGreaterThan(0)
-    expect(warnings.some((w: string) => /package\.json/.test(w))).toBe(true)
+    expect(warnings.some((w) => /package\.json/.test(w.message))).toBe(true)
   })
 
   it('returns empty deps and a warning for v1 lockfile (no packages key)', () => {
     const v1Fixture = JSON.stringify({ lockfileVersion: 1, dependencies: { foo: { version: '1.0.0' } } })
     const { deps, warnings } = parseLockfile(v1Fixture)
     expect(deps).toEqual([])
-    expect(warnings.some((w: string) => /v1|v2\/v3|npm install/.test(w))).toBe(true)
+    expect(warnings.some((w) => /v1|v2\/v3|npm install/.test(w.message))).toBe(true)
   })
 
   it('throws a descriptive error for malformed lockfile JSON', () => {
@@ -133,6 +133,6 @@ describe('parseLockfile', () => {
     expect(deps).not.toContainEqual(expect.objectContaining({ name: 'my-git-pkg' }))
     expect(deps).toContainEqual({ name: 'lodash', version: '4.17.21' })
     expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toMatch(/my-git-pkg/)
+    expect(warnings[0].message).toMatch(/my-git-pkg/)
   })
 })

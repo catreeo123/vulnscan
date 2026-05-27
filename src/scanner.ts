@@ -1,5 +1,6 @@
 import type { Finding, AdvisoryStore } from './types.js'
 import type { Config } from './config.js'
+import type { ScanWarning } from './warnings.js'
 import { parseLockfile } from './lockfile-parser.js'
 import { matchAffected } from './affected-range-matcher.js'
 import { deduplicate } from './deduplicator.js'
@@ -26,7 +27,7 @@ export type ScanInput = {
 
 export type ScanResult = {
   findings: Finding[]
-  warnings: string[]
+  warnings: ScanWarning[]
   advisoryCount: number
   depCount: number
 }

@@ -1,5 +1,6 @@
 import chalk from 'chalk'
 import type { Finding, Severity } from './types.js'
+import type { ScanWarning } from './warnings.js'
 
 const SEVERITY_COLOR: Record<Severity, (s: string) => string> = {
   critical: (s) => chalk.red.bold(s),
@@ -42,7 +43,7 @@ function firstFixedDisplay(ranges: Array<{ introduced?: string; fixed?: string; 
   return undefined
 }
 
-export function renderJson(findings: Finding[], warnings: string[]): string {
+export function renderJson(findings: Finding[], warnings: ScanWarning[]): string {
   const out = {
     findings: findings.map((f) => ({
       name: f.name,
@@ -51,17 +52,17 @@ export function renderJson(findings: Finding[], warnings: string[]): string {
       advisory: f.advisory,
       fix: firstFixed(f.advisory.ranges),
     })),
-    warnings,
+    warnings: warnings.map((w) => w.message),
   }
   return JSON.stringify(out, null, 2)
 }
 
-export function renderGrouped(findings: Finding[], warnings: string[]): string {
+export function renderGrouped(findings: Finding[], warnings: ScanWarning[]): string {
   const lines: string[] = []
 
   if (warnings.length > 0) {
     lines.push(chalk.dim('Warnings:'))
-    for (const w of warnings) lines.push(chalk.dim(`  ! ${w}`))
+    for (const w of warnings) lines.push(chalk.dim(`  ! ${w.message}`))
     lines.push('')
   }
 
