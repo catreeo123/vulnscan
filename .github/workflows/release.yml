@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
   release:
@@ -18,7 +17,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: 'https://npm.pkg.github.com'
 
       - run: npm ci
 
@@ -26,13 +24,16 @@ jobs:
 
       - run: npm run build
 
-      - name: Publish to GitHub Packages
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Create GitHub release
         run: gh release create ${{ github.ref_name }} --generate-notes --title "Release ${{ github.ref_name }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download existing DB (warm start)
+        run: |
+          mkdir -p /tmp/vulnscan-ci
+          gh release download db-latest -p db.sqlite.gz -D /tmp/vulnscan-ci/ 2>/dev/null && \
+          gunzip -f /tmp/vulnscan-ci/db.sqlite.gz || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

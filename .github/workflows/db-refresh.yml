@@ -22,6 +22,14 @@ jobs:
 
       - run: npm run build
 
+      - name: Download existing DB (warm start)
+        run: |
+          mkdir -p /tmp/vulnscan-ci
+          gh release download db-latest -p db.sqlite.gz -D /tmp/vulnscan-ci/ 2>/dev/null && \
+          gunzip -f /tmp/vulnscan-ci/db.sqlite.gz || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Run full advisory sync
         run: node dist/cli.js update
         env:
