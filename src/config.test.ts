@@ -29,6 +29,26 @@ describe('loadConfig', () => {
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('bogus'))
   })
 
+  it('warns and falls back when .vulnscanrc is malformed JSON', () => {
+    const dir = makeTmpDir()
+    writeFileSync(join(dir, '.vulnscanrc'), '{ "failOn": ["low"], }') // trailing comma → invalid JSON
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write')
+    const config = loadConfig(dir)
+
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('.vulnscanrc'))
+    expect(config.failOn).toEqual(['critical', 'high'])
+  })
+
+  it('does not warn when no .vulnscanrc exists (missing file is silent)', () => {
+    const dir = makeTmpDir()
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write')
+    loadConfig(dir)
+
+    expect(stderrSpy).not.toHaveBeenCalled()
+  })
+
   it('accepts valid severities unchanged with no warning', () => {
     const dir = makeTmpDir()
     writeFileSync(join(dir, '.vulnscanrc'), JSON.stringify({ failOn: ['high', 'low'] }))

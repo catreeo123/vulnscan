@@ -1,6 +1,23 @@
-import type { Severity } from './types.js'
+import type { Advisory, Severity } from './types.js'
 import { informational } from './warnings.js'
 import type { ScanWarning } from './warnings.js'
+
+/**
+ * Resolve the stored severity for an advisory, applying the malware override.
+ *
+ * Malware advisories (`type === 'mal'`) are always `critical` regardless of the
+ * upstream label — feeds frequently omit or under-rate severity for malicious
+ * packages. Both the OSV and GitHub Advisory sync paths route through here so the
+ * override cannot drift between sources.
+ */
+export function resolveAdvisorySeverity(
+  type: Advisory['type'],
+  label: string | undefined,
+  advisoryId: string,
+): { severity: Severity; warning?: ScanWarning } {
+  const { severity, warning } = mapSeverity({ label, advisoryId })
+  return { severity: type === 'mal' ? 'critical' : severity, warning }
+}
 
 export function mapSeverity(input: {
   label?: string

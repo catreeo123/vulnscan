@@ -189,6 +189,26 @@ describe('D10: runSync surfaces page-limit warnings to stderr', () => {
 
     expect(written.join('')).toMatch(/page limit/)
   })
+
+  it('runSync returns the incomplete warning so the update command can fail safe', async () => {
+    const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+    const { runSync } = await import('./sync-orchestrator.js')
+
+    vi.mocked(syncGithubAdvisories).mockResolvedValueOnce({
+      imported: 0,
+      skipped: 0,
+      warnings: [{ class: 'incomplete', message: 'GitHub Advisory sync reached page limit (2); results may be incomplete' }],
+    })
+
+    const written: string[] = []
+    const origWrite = process.stderr.write.bind(process.stderr)
+    ;(process.stderr as any).write = (chunk: unknown) => { written.push(String(chunk)); return true }
+    const store = makeStore()
+    const warnings = await runSync(store)
+    ;(process.stderr as any).write = origWrite
+
+    expect(warnings.some((w) => w.class === 'incomplete')).toBe(true)
+  })
 })
 
 // ─── #24: push(...big) RangeError regression tests ───────────────────────────

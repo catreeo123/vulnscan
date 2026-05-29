@@ -57,8 +57,15 @@ export function loadConfig(projectDir: string): Config {
         stalenessHours,
         stalenessMs: stalenessHours * 60 * 60 * 1000,
       }
-    } catch {
-      // file not found or invalid JSON — try next location
+    } catch (err) {
+      // A missing file is normal (try the next location silently). A present-but-unreadable
+      // or malformed-JSON file is a user mistake that would otherwise silently revert the
+      // fail threshold to defaults — warn so it isn't lost.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        process.stderr.write(
+          `Warning: could not load ${loc} (${(err as Error).message}); ignoring\n`,
+        )
+      }
     }
   }
 

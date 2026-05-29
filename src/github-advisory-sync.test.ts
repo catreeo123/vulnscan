@@ -260,6 +260,45 @@ it('malware pass stores advisories with type=mal; reviewed pass stores type=cve'
   expect(types).toContain('mal')
 })
 
+it('forces a malware advisory to critical even when GitHub reports a lower severity', async () => {
+  // reviewed pass: empty; malware pass: one advisory the API rates 'low'
+  const malwareItem = {
+    ghsa_id: 'GHSA-dddd-eeee-ffff',
+    cve_id: null,
+    severity: 'low',
+    html_url: 'https://github.com/advisories/GHSA-dddd-eeee-ffff',
+    summary: 'Malicious package',
+    vulnerabilities: [
+      {
+        package: { ecosystem: 'npm', name: 'evil-pkg' },
+        vulnerable_version_range: '<= 9.9.9',
+        first_patched_version: null,
+      },
+    ],
+  }
+
+  const mockFetch = vi
+    .fn()
+    .mockImplementationOnce(() =>
+      Promise.resolve(new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })),
+    )
+    .mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(JSON.stringify([malwareItem]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      ),
+    )
+
+  vi.stubGlobal('fetch', mockFetch)
+
+  const store = makeStore()
+  const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+  await syncGithubAdvisories(store, undefined)
+
+  const malAdvisory = vi.mocked(store.upsert).mock.calls.map((c) => c[0]).find((a) => a.type === 'mal')
+  expect(malAdvisory).toBeDefined()
+  expect(malAdvisory!.severity).toBe('critical')
+})
+
 // ── D8: MAX_PAGES warning ────────────────────────────────────────────────────
 
 it('does NOT call setLastSyncedAt when page limit is hit', async () => {

@@ -168,6 +168,28 @@ describe('run() — version command', () => {
   })
 })
 
+describe('run() — check usage guard', () => {
+  // These return before maybeBootstrap/openStore, so no network or DB is touched.
+  it('returns 1 for a scoped package with no version (@scope/pkg)', async () => {
+    const code = await run(['check', '@scope/pkg'])
+    expect(code).toBe(1)
+  })
+
+  it('returns 1 for a bare package with no version', async () => {
+    const code = await run(['check', 'lodash'])
+    expect(code).toBe(1)
+  })
+
+  it('writes the usage hint to stderr for a versionless scoped package', async () => {
+    const written: string[] = []
+    const orig = process.stderr.write.bind(process.stderr)
+    ;(process.stderr as any).write = (chunk: unknown) => { written.push(String(chunk)); return true }
+    await run(['check', '@scope/pkg'])
+    ;(process.stderr as any).write = orig
+    expect(written.join('')).toMatch(/Usage: vulnscan check/)
+  })
+})
+
 describe('run() — unknown command', () => {
   it('returns 1 for an unrecognised command', async () => {
     const code = await run(['__definitely_not_a_command__'])

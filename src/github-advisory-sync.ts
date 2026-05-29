@@ -1,7 +1,7 @@
 import type { Advisory, AdvisoryStore, SemverRange } from './types.js'
 import { incomplete } from './warnings.js'
 import type { ScanWarning } from './warnings.js'
-import { mapSeverity } from './severity-mapper.js'
+import { resolveAdvisorySeverity } from './severity-mapper.js'
 
 const GITHUB_API = 'https://api.github.com'
 const PER_PAGE = 100
@@ -121,7 +121,9 @@ function ghAdvisoryToAdvisories(
   if (npmVulns.length === 0) return { advisories: [], warnings: [] }
 
   const id = item.cve_id ?? item.ghsa_id
-  const { severity, warning } = mapSeverity({ label: item.severity, advisoryId: id })
+  // Malware advisories are forced to critical here (shared with OSV) so a malware
+  // package the GitHub feed under-rates is never stored below the fail threshold.
+  const { severity, warning } = resolveAdvisorySeverity(advisoryType, item.severity, id)
   const itemWarnings: ScanWarning[] = warning ? [warning] : []
 
   const advisories = npmVulns

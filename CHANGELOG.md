@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.10] — 2026-05-29
+
+### Fixes
+
+Eight correctness/hardening fixes from a whole-repo review (PRD #32, issues #33–#40):
+
+- **GitHub malware advisories are now forced to `critical`** — the `mal → critical` override existed only in OSV sync; GitHub's malware feed stored its reported severity verbatim, so a malicious package GitHub under-rated (`moderate`/`low`) could slip past `--fail-on critical`. Extracted `resolveAdvisorySeverity()` so both sync paths share one rule. Closes #33.
+- **`vulnscan update` now exits 2 on an incomplete sync** — `runSync` returned `void` and `update` always exited 0, so a failed GitHub Advisory sync let CI overwrite the good `db-latest` asset with degraded data. `runSync` now returns the collected warnings and `update` fails safe (CI keeps the last-good DB). Closes #34.
+- **First-run bootstrap is now atomic** — the download streamed straight into `db.sqlite`; an interrupted download left a corrupt file that bricked every subsequent run. Now downloads to a temp path and atomically renames on success, cleaning up on failure. Closes #35.
+- **`--fail-on=value` (equals form) is now honored** — only the space-separated form parsed; `--fail-on=critical` was silently dropped, reverting the fail gate to defaults. A pre-commit review of this change caught two follow-on edges, now also fixed: a value passed to a boolean flag (`--offline=false`) was discarded and *enabled* the flag (inverting intent), and an empty equals value (`--fail-on=`) was stored as `""`; both now warn and fall back instead. Closes #36.
+- **`vulnscan check @scope/pkg` without a version now errors** — it previously parsed to an empty package name and silently reported clean. Closes #37.
+- **A malformed `.vulnscanrc` now warns** instead of being silently ignored. Closes #38.
+- **Importing `cli.ts` no longer dispatches a command** — the module-scope entry call is guarded by a realpath entry-point check, so importing it performs no DB/network/exit-code side effects. Closes #39.
+- **Release workflow hardened against tag-name shell injection** — `github.ref_name` is passed via an env var and quoted. Closes #40.
+
 ## [0.2.9] — 2026-05-27
 
 ### Fixes

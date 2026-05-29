@@ -1,5 +1,5 @@
 import { createGunzip } from 'node:zlib'
-import { createWriteStream, existsSync, mkdirSync } from 'node:fs'
+import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
@@ -31,11 +31,22 @@ export async function bootstrapDb(): Promise<boolean> {
     }
 
     mkdirSync(dirname(DB_PATH), { recursive: true })
-    await pipeline(
-      Readable.fromWeb(res.body as import('stream/web').ReadableStream),
-      createGunzip(),
-      createWriteStream(DB_PATH),
-    )
+    // Download+decompress to a sibling temp path, then atomically rename onto DB_PATH.
+    // A crash or network drop mid-stream must never leave a half-written file where the
+    // live DB belongs — that would make existsSync(DB_PATH) skip every future bootstrap
+    // and crash openDb on the corrupt file.
+    const tmpPath = `${DB_PATH}.download-${process.pid}`
+    try {
+      await pipeline(
+        Readable.fromWeb(res.body as import('stream/web').ReadableStream),
+        createGunzip(),
+        createWriteStream(tmpPath),
+      )
+      renameSync(tmpPath, DB_PATH)
+    } catch (streamErr) {
+      rmSync(tmpPath, { force: true })
+      throw streamErr
+    }
 
     process.stderr.write('Bootstrap complete.\n')
     return true

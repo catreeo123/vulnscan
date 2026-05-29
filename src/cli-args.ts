@@ -30,18 +30,38 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let i = 0
   while (i < argv.length) {
     const arg = argv[i]
-    if (KNOWN_BOOLEAN_FLAGS.has(arg)) {
-      boolFlags.add(arg)
-      i += 1
-    } else if (KNOWN_FLAGS.has(arg)) {
-      const value = argv[i + 1]
-      if (value === undefined) {
-        process.stderr.write(`Warning: ${arg} flag has no value, ignoring\n`)
-        i += 1
-        continue
+    // Support the `--flag=value` form alongside `--flag value`. Only split on `=` for
+    // `--`-prefixed tokens so positionals like `@scope/pkg@1.2.3` are never mangled.
+    const eqIdx = arg.startsWith('--') ? arg.indexOf('=') : -1
+    const name = eqIdx >= 0 ? arg.slice(0, eqIdx) : arg
+    if (KNOWN_BOOLEAN_FLAGS.has(name)) {
+      // Boolean flags take no value; `--offline=false` must not silently enable the
+      // flag by discarding the value. Warn and ignore rather than invert the intent.
+      if (eqIdx >= 0) {
+        process.stderr.write(`Warning: ${name} takes no value, ignoring\n`)
+      } else {
+        boolFlags.add(name)
       }
-      flags[arg] = value
-      i += 2
+      i += 1
+    } else if (KNOWN_FLAGS.has(name)) {
+      if (eqIdx >= 0) {
+        const value = arg.slice(eqIdx + 1)
+        if (value === '') {
+          process.stderr.write(`Warning: ${name} flag has no value, ignoring\n`)
+        } else {
+          flags[name] = value
+        }
+        i += 1
+      } else {
+        const value = argv[i + 1]
+        if (value === undefined) {
+          process.stderr.write(`Warning: ${arg} flag has no value, ignoring\n`)
+          i += 1
+          continue
+        }
+        flags[name] = value
+        i += 2
+      }
     } else {
       positional.push(arg)
       i += 1

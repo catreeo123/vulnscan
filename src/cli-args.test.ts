@@ -132,6 +132,48 @@ describe('parseArgs', () => {
     })
   })
 
+  it('--fail-on=value (equals form) parses like the space form', () => {
+    expect(parseArgs(['scan', '.', '--fail-on=critical,high'])).toEqual({
+      command: 'scan',
+      projectDir: '.',
+      format: 'table',
+      failOn: 'critical,high',
+      noSync: false,
+    })
+  })
+
+  it('--format=json (equals form) sets format', () => {
+    expect(parseArgs(['scan', '.', '--format=json'])).toEqual({
+      command: 'scan',
+      projectDir: '.',
+      format: 'json',
+      failOn: null,
+      noSync: false,
+    })
+  })
+
+  it('--dir=value (equals form) sets dir on check', () => {
+    expect(parseArgs(['check', 'lodash@1.0.0', '--dir=/tmp/x'])).toEqual({
+      command: 'check',
+      target: 'lodash@1.0.0',
+      format: 'table',
+      failOn: null,
+      dir: '/tmp/x',
+      noSync: false,
+    })
+  })
+
+  it('does not mistake an @-bearing positional for a flag', () => {
+    expect(parseArgs(['check', '@scope/pkg@1.2.3'])).toEqual({
+      command: 'check',
+      target: '@scope/pkg@1.2.3',
+      format: 'table',
+      failOn: null,
+      dir: null,
+      noSync: false,
+    })
+  })
+
   it('flags interleaved with positionals', () => {
     expect(parseArgs(['scan', '--format', 'json', '.'])).toEqual({
       command: 'scan',
@@ -182,6 +224,30 @@ describe('parseArgs', () => {
       failOn: null,
       noSync: true,
     })
+  })
+
+  it('--no-sync=false does not enable noSync (boolean flag takes no value)', () => {
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    expect(parseArgs(['scan', '.', '--no-sync=false'])).toEqual({
+      command: 'scan',
+      projectDir: '.',
+      format: 'table',
+      failOn: null,
+      noSync: false,
+    })
+    vi.restoreAllMocks()
+  })
+
+  it('--offline=true does not enable noSync (boolean flag takes no value)', () => {
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    expect(parseArgs(['scan', '.', '--offline=true'])).toMatchObject({ noSync: false })
+    vi.restoreAllMocks()
+  })
+
+  it('--fail-on= (empty equals value) falls back to default, not empty string', () => {
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    expect(parseArgs(['scan', '.', '--fail-on='])).toMatchObject({ failOn: null })
+    vi.restoreAllMocks()
   })
 })
 
@@ -236,5 +302,21 @@ describe('parseArgs — orphan flag warning (S5)', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     parseArgs(['scan', '.', '--fail-on', 'high'])
     expect(stderrSpy).not.toHaveBeenCalled()
+  })
+
+  it('warns that a boolean flag takes no value when given --offline=false', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    parseArgs(['scan', '.', '--offline=false'])
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Warning: --offline takes no value'),
+    )
+  })
+
+  it('warns when a known flag is given an empty equals value', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    parseArgs(['scan', '.', '--fail-on='])
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Warning: --fail-on flag has no value'),
+    )
   })
 })

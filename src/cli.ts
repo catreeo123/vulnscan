@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { openStore } from './advisory-store-sqlite.js'
 import { runSync } from './sync-orchestrator.js'
 import { loadConfig, validateFailOn } from './config.js'
@@ -32,20 +33,25 @@ export async function run(argv: string[]): Promise<number> {
   if (parsed.command === 'update') {
     const store = openStore()
     try {
-      await runSync(store)
+      const warnings = await runSync(store)
+      // Fail safe: an incomplete sync must not look like a clean refresh, so CI
+      // (default `bash -e`) skips publishing and keeps the last-good db-latest.
+      return hasIncomplete(warnings) ? 2 : 0
     } finally {
       safeClose(store)
     }
-    return 0
   }
 
   if (parsed.command === 'check') {
     const pkgArg = parsed.target
-    if (!pkgArg.includes('@')) {
+    const lastAt = pkgArg.lastIndexOf('@')
+    // lastAt <= 0 covers both "no @" (-1) and a leading @ (0) — e.g. an unversioned
+    // scoped package "@scope/pkg", which would otherwise parse to an empty name and
+    // silently report clean.
+    if (lastAt <= 0) {
       process.stderr.write('Usage: vulnscan check <package@version>\n')
       return 1
     }
-    const lastAt = pkgArg.lastIndexOf('@')
     const name = pkgArg.slice(0, lastAt)
     const version = pkgArg.slice(lastAt + 1)
 
@@ -237,9 +243,24 @@ export function computeExitCode(findings: Finding[], warnings: ScanWarning[], fa
   return 0
 }
 
-run(process.argv.slice(2))
-  .then((code) => { process.exitCode = code })
-  .catch((err: Error) => {
-    process.stderr.write(`Error: ${scrubSecrets(err.message)}\n`)
-    process.exitCode = 1
-  })
+// Only dispatch when executed as the entry point (bin / `node dist/cli.js` / `tsx src/cli.ts`),
+// not when imported by tests or tooling — importing must not open the DB, hit the network,
+// or mutate process.exitCode. realpath handles the symlinked global bin.
+function isEntryPoint(): boolean {
+  const entry = process.argv[1]
+  if (!entry) return false
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url))
+  } catch {
+    return false
+  }
+}
+
+if (isEntryPoint()) {
+  run(process.argv.slice(2))
+    .then((code) => { process.exitCode = code })
+    .catch((err: Error) => {
+      process.stderr.write(`Error: ${scrubSecrets(err.message)}\n`)
+      process.exitCode = 1
+    })
+}

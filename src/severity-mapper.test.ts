@@ -1,5 +1,5 @@
 import { it, expect, describe } from 'vitest'
-import { mapSeverity } from './severity-mapper.js'
+import { mapSeverity, resolveAdvisorySeverity } from './severity-mapper.js'
 
 describe('mapSeverity — known labels', () => {
   it('maps CRITICAL (case-insensitive) to critical with no warning', () => {
@@ -70,5 +70,30 @@ describe('mapSeverity — fail-safe escalation', () => {
     expect(result.warning).toBeDefined()
     expect(result.warning!.class).toBe('informational')
     expect(result.warning!.message).toContain('MAL-0001-0001')
+  })
+})
+
+describe('resolveAdvisorySeverity — malware override', () => {
+  it('forces mal advisories to critical regardless of a non-critical label', () => {
+    const result = resolveAdvisorySeverity('mal', 'low', 'MAL-0001-0001')
+    expect(result.severity).toBe('critical')
+  })
+
+  it('forces mal advisories to critical even when the label is missing', () => {
+    const result = resolveAdvisorySeverity('mal', undefined, 'MAL-0002-0002')
+    expect(result.severity).toBe('critical')
+  })
+
+  it('passes a cve advisory severity through unchanged', () => {
+    const result = resolveAdvisorySeverity('cve', 'moderate', 'CVE-2024-0001')
+    expect(result.severity).toBe('moderate')
+    expect(result.warning).toBeUndefined()
+  })
+
+  it('preserves the fail-safe high + warning for a cve with an unknown label', () => {
+    const result = resolveAdvisorySeverity('cve', 'bogus', 'CVE-2024-0002')
+    expect(result.severity).toBe('high')
+    expect(result.warning).toBeDefined()
+    expect(result.warning!.class).toBe('informational')
   })
 })

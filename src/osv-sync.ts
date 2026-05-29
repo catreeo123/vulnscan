@@ -6,7 +6,7 @@ import { createWriteStream, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Advisory, AdvisoryStore, SemverRange } from './types.js'
-import { mapSeverity } from './severity-mapper.js'
+import { resolveAdvisorySeverity } from './severity-mapper.js'
 import { informational } from './warnings.js'
 import type { ScanWarning } from './warnings.js'
 
@@ -151,13 +151,14 @@ export function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[];
     // A cross-reference lookup would fix this but is out of scope — the advisory databases eventually
     // converge and GHSA entries in OSV carry the GHSA alias, so in practice this gap is rare.
     const canonicalId = ghsaMatch ? ghsaMatch.toUpperCase() : id
-    const { severity, warning } = mapSeverity({
-      label: affected.database_specific?.severity ?? entry.database_specific?.severity,
-      advisoryId: id,
-    })
+    // Malware override (mal → critical) lives in resolveAdvisorySeverity so the OSV
+    // and GitHub Advisory paths share one rule and cannot drift (fix #26).
+    const { severity: finalSeverity, warning } = resolveAdvisorySeverity(
+      type,
+      affected.database_specific?.severity ?? entry.database_specific?.severity,
+      id,
+    )
     if (warning) warnings.push(warning)
-    // Fix #26: MAL-* advisories are always critical — OSV often omits severity for malware entries.
-    const finalSeverity = type === 'mal' ? 'critical' : severity
     advisories.push({
       id,
       canonicalId,

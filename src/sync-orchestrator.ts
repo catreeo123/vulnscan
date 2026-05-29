@@ -56,16 +56,23 @@ export async function syncIfStale(
   return warnings
 }
 
-// runSync always does a full sync (no staleness check, no since filter).
-// Used by the `update` command where the user explicitly requests a fresh pull.
-export async function runSync(store: AdvisoryStore): Promise<void> {
-  const { fullSyncStartedAt } = await syncOsv(store)
+// runSync forces a full OSV pull and a GitHub sync (the latter is incremental from the
+// stored cursor by design — warm-start + incremental is the CI refresh strategy).
+// Used by the `update` command. Returns the collected warnings so the caller can fail
+// safe (exit 2) on an `incomplete` sync instead of silently publishing degraded data.
+export async function runSync(store: AdvisoryStore): Promise<ScanWarning[]> {
+  const { fullSyncStartedAt, warnings: osvWarnings } = await syncOsv(store)
   const ghWarnings = await syncGithubSafe(store)
   store.pruneStale(fullSyncStartedAt, GRACE_PERIOD_MS)
   store.setLastSyncedAt('osv', Date.now())
-  for (const warning of ghWarnings) {
-    process.stderr.write(`warning: ${warning.message}\n`)
+  // Build with push-loops, not spread — the warning arrays can be huge (issue #24).
+  const warnings: ScanWarning[] = []
+  for (const w of osvWarnings) warnings.push(w)
+  for (const w of ghWarnings) {
+    warnings.push(w)
+    process.stderr.write(`warning: ${w.message}\n`)
   }
+  return warnings
 }
 
 async function syncGithubSafe(store: AdvisoryStore): Promise<ScanWarning[]> {
