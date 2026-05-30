@@ -63,6 +63,7 @@ export async function syncGithubAdvisories(
 
   for (const pass of passes) {
     let page = 0
+    let passImported = 0
     let nextUrl: string | null =
       `${GITHUB_API}/advisories?type=${pass.type}&ecosystem=npm&per_page=${PER_PAGE}${sinceFilter}`
 
@@ -85,12 +86,15 @@ export async function syncGithubAdvisories(
         for (const advisory of advisories) {
           store.upsert(advisory)
           imported++
+          passImported++
         }
         warnings.push(...itemWarnings)
         if (advisories.length === 0) skipped++
       }
 
-      process.stderr.write(`GitHub Advisory: page ${page} (${pass.type}) — ${imported} imported\r`)
+      process.stderr.write(
+        `GitHub Advisory: page ${page} (${pass.type}) — ${passImported} imported (${imported} total)\r`,
+      )
       if (onProgress) onProgress(imported)
 
       nextUrl = parseLinkNext(res.headers.get('link'))

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.11] — 2026-05-30
+
+### Fixes
+
+- **GitHub Advisory progress line now reports per-pass counts** — `imported` was a single counter shared across both sync passes (reviewed, then malware) and never reset, so the malware pass printed the cumulative total tagged with the malware label (e.g. "malware — 38 imported" when malware actually added 30). Each pass now reports its own delta plus the running cumulative (`30 imported (38 total)`). Final returned totals are unchanged — labeling fix only.
+
 ## [0.2.10] — 2026-05-29
 
 ### Fixes
