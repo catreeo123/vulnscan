@@ -2,6 +2,8 @@ node_modules/
 dist/
 coverage/
 *.tgz
+.claude/worktrees/
+.claude/scheduled_tasks.lock
 graphify-out/manifest.json
 graphify-out/cost.json
 graphify-out/cache/

@@ -1,5 +1,5 @@
 import semver from 'semver'
-import type { Dep, Advisory, Finding, SemverRange } from './types.js'
+import type { Dep, Advisory, Finding, SemverRange } from '../core/types.js'
 
 export function normalizeRawRange(raw: string): string {
   return raw.replace(/,\s*/g, ' ')

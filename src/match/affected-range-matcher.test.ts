@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { matchAffected, normalizeRawRange } from './affected-range-matcher.js'
-import type { Advisory } from './types.js'
+import type { Advisory } from '../core/types.js'
 
 const lodashAdvisory: Advisory = {
   id: 'CVE-2021-23337',

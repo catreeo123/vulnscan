@@ -1,6 +1,6 @@
 import chalk from 'chalk'
-import type { Finding, Severity } from './types.js'
-import type { ScanWarning } from './warnings.js'
+import type { Finding, Severity } from '../core/types.js'
+import type { ScanWarning } from '../core/warnings.js'
 
 const SEVERITY_COLOR: Record<Severity, (s: string) => string> = {
   critical: (s) => chalk.red.bold(s),

@@ -1,5 +1,5 @@
 import { vi, it, describe, expect, beforeEach } from 'vitest'
-import type { AdvisoryStore } from './types.js'
+import type { AdvisoryStore } from '../core/types.js'
 
 vi.mock('./osv-sync.js', () => ({
   syncOsv: vi.fn().mockResolvedValue({ imported: 0, skipped: 0, fullSyncStartedAt: 1_000_000_000_000, warnings: [] }),

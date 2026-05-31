@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.24] — 2026-05-31
+
+### Refactors
+
+- **`src/` reorganized into domain subfolders** — the 22 modules (and their co-located tests) moved from a flat `src/` into `cli/`, `sync/`, `store/`, `lockfile/`, `match/`, `output/`, and `core/`. All relative imports were rewritten accordingly; no runtime behavior changed. Layout-sensitive paths were updated to match: `bin`/`postbuild` now point at `dist/cli/cli.js`, the `--version` `require` and the skill-installer `DEFAULT_SOURCE` resolve `../../` from `cli/`, and the E2E harness's `PROJECT_ROOT` walks two levels up. Build clean, all 377 tests green.
+
 ## [0.2.23] — 2026-05-31
 
 ### Chores

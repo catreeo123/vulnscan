@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { renderGrouped, renderJson } from './output-renderer.js'
-import type { Finding } from './types.js'
-import { incomplete } from './warnings.js'
+import type { Finding } from '../core/types.js'
+import { incomplete } from '../core/warnings.js'
 
 // Minimal advisory factory
 function mkAdvisory(overrides: Partial<{

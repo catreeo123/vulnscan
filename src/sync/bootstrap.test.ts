@@ -18,8 +18,8 @@ vi.mock('node:stream/promises', async (importOriginal) => {
   return { ...actual, pipeline: vi.fn() }
 })
 
-vi.mock('./local-db.js', () => ({ DB_PATH: '/tmp/test-vulnscan.sqlite' }))
-vi.mock('./secrets.js', () => ({ scrubSecrets: (msg: string) => msg }))
+vi.mock('../store/local-db.js', () => ({ DB_PATH: '/tmp/test-vulnscan.sqlite' }))
+vi.mock('../core/secrets.js', () => ({ scrubSecrets: (msg: string) => msg }))
 
 const { bootstrapDb, maybeBootstrap } = await import('./bootstrap.js')
 

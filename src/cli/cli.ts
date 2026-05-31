@@ -3,17 +3,17 @@ import semver from 'semver'
 import { resolve } from 'node:path'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { openStore } from './advisory-store-sqlite.js'
-import { runSync } from './sync-orchestrator.js'
-import { loadConfig, validateFailOn } from './config.js'
-import { renderGrouped, renderJson } from './output-renderer.js'
+import { openStore } from '../store/advisory-store-sqlite.js'
+import { runSync } from '../sync/sync-orchestrator.js'
+import { loadConfig, validateFailOn } from '../core/config.js'
+import { renderGrouped, renderJson } from '../output/output-renderer.js'
 import { runScan, checkPackage } from './scanner.js'
 import { parseArgs } from './cli-args.js'
-import { scrubSecrets } from './secrets.js'
-import { maybeBootstrap } from './bootstrap.js'
-import { hasIncomplete } from './warnings.js'
-import type { Severity, Finding } from './types.js'
-import type { ScanWarning } from './warnings.js'
+import { scrubSecrets } from '../core/secrets.js'
+import { maybeBootstrap } from '../sync/bootstrap.js'
+import { hasIncomplete } from '../core/warnings.js'
+import type { Severity, Finding } from '../core/types.js'
+import type { ScanWarning } from '../core/warnings.js'
 
 export async function run(argv: string[]): Promise<number> {
   const parsed = parseArgs(argv)
@@ -21,7 +21,7 @@ export async function run(argv: string[]): Promise<number> {
   if (parsed.command === 'version') {
     const { createRequire } = await import('node:module')
     const require = createRequire(import.meta.url)
-    const { version } = require('../package.json') as { version: string }
+    const { version } = require('../../package.json') as { version: string }
     process.stdout.write(version + '\n')
     return 0
   }

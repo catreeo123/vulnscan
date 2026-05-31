@@ -1,7 +1,7 @@
 import { vi, it, expect, beforeEach, describe } from 'vitest'
-import type { AdvisoryStore } from './types.js'
-import { InMemoryAdvisoryStore } from './advisory-store-memory.js'
-import { matchAffected } from './affected-range-matcher.js'
+import type { AdvisoryStore } from '../core/types.js'
+import { InMemoryAdvisoryStore } from '../store/advisory-store-memory.js'
+import { matchAffected } from '../match/affected-range-matcher.js'
 
 function makeStore(): AdvisoryStore {
   return {

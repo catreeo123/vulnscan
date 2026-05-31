@@ -1,6 +1,6 @@
-import type { Dep } from './types.js'
-import { incomplete, informational } from './warnings.js'
-import type { ScanWarning } from './warnings.js'
+import type { Dep } from '../core/types.js'
+import { incomplete, informational } from '../core/warnings.js'
+import type { ScanWarning } from '../core/warnings.js'
 
 export type PackageEntry = {
   version?: string

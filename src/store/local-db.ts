@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import { homedir } from 'node:os'
 import * as fs from 'node:fs'
 import { join, dirname } from 'node:path'
-import type { Advisory, SemverRange, Severity } from './types.js'
+import type { Advisory, SemverRange, Severity } from '../core/types.js'
 
 export const DB_PATH = process.env.VULNSCAN_DB_PATH ?? join(homedir(), '.vulnscan', 'db.sqlite')
 

@@ -1,9 +1,9 @@
-import type { AdvisoryStore } from './types.js'
+import type { AdvisoryStore } from '../core/types.js'
 import { syncOsv } from './osv-sync.js'
 import { syncGithubAdvisories } from './github-advisory-sync.js'
-import { scrubSecrets } from './secrets.js'
-import { incomplete, informational } from './warnings.js'
-import type { ScanWarning } from './warnings.js'
+import { scrubSecrets } from '../core/secrets.js'
+import { incomplete, informational } from '../core/warnings.js'
+import type { ScanWarning } from '../core/warnings.js'
 
 const DEFAULT_STALENESS_MS = 24 * 60 * 60 * 1000
 

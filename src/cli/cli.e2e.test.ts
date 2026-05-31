@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
-import { openDb, upsertAdvisory, setLastSyncedAt } from './local-db.js'
+import { openDb, upsertAdvisory, setLastSyncedAt } from '../store/local-db.js'
 
 // Resolve paths relative to this test file so that worktree runs use the worktree CLI
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const PROJECT_ROOT = join(__dirname, '..')
+const PROJECT_ROOT = join(__dirname, '..', '..')
 const CLI_PATH = join(__dirname, 'cli.ts')
 const TSX_BIN = join(PROJECT_ROOT, 'node_modules/.bin/tsx')
 

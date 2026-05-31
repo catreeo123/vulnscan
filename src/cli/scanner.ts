@@ -1,11 +1,11 @@
-import type { Finding, AdvisoryStore } from './types.js'
-import type { Config } from './config.js'
-import type { ScanWarning } from './warnings.js'
-import { informational, incomplete } from './warnings.js'
-import { parseLockfile } from './lockfile-parser.js'
-import { matchAffected } from './affected-range-matcher.js'
-import { deduplicate } from './deduplicator.js'
-import { syncIfStale } from './sync-orchestrator.js'
+import type { Finding, AdvisoryStore } from '../core/types.js'
+import type { Config } from '../core/config.js'
+import type { ScanWarning } from '../core/warnings.js'
+import { informational, incomplete } from '../core/warnings.js'
+import { parseLockfile } from '../lockfile/lockfile-parser.js'
+import { matchAffected } from '../match/affected-range-matcher.js'
+import { deduplicate } from '../match/deduplicator.js'
+import { syncIfStale } from '../sync/sync-orchestrator.js'
 
 type SyncFn = (store: AdvisoryStore, stalenessMs: number) => Promise<ScanWarning[]>
 

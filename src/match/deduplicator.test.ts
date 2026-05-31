@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { deduplicate } from './deduplicator.js'
-import type { Finding } from './types.js'
+import type { Finding } from '../core/types.js'
 
 const baseFinding = (overrides: Partial<Finding> = {}): Finding => ({
   name: 'lodash',

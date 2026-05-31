@@ -1,6 +1,6 @@
 import { it, expect, describe, beforeEach } from 'vitest'
 import { InMemoryAdvisoryStore } from './advisory-store-memory.js'
-import type { Advisory } from './types.js'
+import type { Advisory } from '../core/types.js'
 
 const advisory: Advisory = {
   id: 'CVE-TEST-001',

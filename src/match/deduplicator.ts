@@ -1,4 +1,4 @@
-import type { Finding, Severity } from './types.js'
+import type { Finding, Severity } from '../core/types.js'
 
 const SEVERITY_RANK: Record<Severity, number> = {
   critical: 4,

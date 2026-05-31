@@ -1,9 +1,9 @@
 import { vi, it, describe, expect, beforeEach } from 'vitest'
 import AdmZip from 'adm-zip'
-import type { AdvisoryStore } from './types.js'
+import type { AdvisoryStore } from '../core/types.js'
 import { eventsToRanges, osvEntryToAdvisories } from './osv-sync.js'
-import { InMemoryAdvisoryStore } from './advisory-store-memory.js'
-import { matchAffected } from './affected-range-matcher.js'
+import { InMemoryAdvisoryStore } from '../store/advisory-store-memory.js'
+import { matchAffected } from '../match/affected-range-matcher.js'
 
 function makeZipResponse(entries: { name: string; content: string }[]): Response {
   const zip = new AdmZip()

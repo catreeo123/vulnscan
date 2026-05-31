@@ -1,6 +1,6 @@
-import type { Advisory, Severity } from './types.js'
-import { informational } from './warnings.js'
-import type { ScanWarning } from './warnings.js'
+import type { Advisory, Severity } from '../core/types.js'
+import { informational } from '../core/warnings.js'
+import type { ScanWarning } from '../core/warnings.js'
 
 /**
  * Resolve the stored severity for an advisory, applying the malware override.

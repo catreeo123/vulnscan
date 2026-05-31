@@ -1,7 +1,7 @@
-import type { Dep } from './types.js'
+import type { Dep } from '../core/types.js'
 import { buildAncestryMap } from './ancestry.js'
-import { incomplete, informational } from './warnings.js'
-import type { ScanWarning } from './warnings.js'
+import { incomplete, informational } from '../core/warnings.js'
+import type { ScanWarning } from '../core/warnings.js'
 import { resolveEntry } from './lockfile-resolver.js'
 import type { PackageEntry } from './lockfile-resolver.js'
 

@@ -3,7 +3,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 
-const DEFAULT_SOURCE = join(dirname(fileURLToPath(import.meta.url)), '..', 'skill', 'SKILL.md')
+const DEFAULT_SOURCE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'skill', 'SKILL.md')
 
 export function installSkill(opts?: { claudeDir?: string; sourcePath?: string }): void {
   const claudeDir = opts?.claudeDir ?? join(homedir(), '.claude')

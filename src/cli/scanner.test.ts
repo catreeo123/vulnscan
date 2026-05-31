@@ -1,6 +1,6 @@
 import { vi, it, expect, describe, beforeEach } from 'vitest'
 import { runScan, checkPackage } from './scanner.js'
-import { InMemoryAdvisoryStore } from './advisory-store-memory.js'
+import { InMemoryAdvisoryStore } from '../store/advisory-store-memory.js'
 
 let store: InMemoryAdvisoryStore
 

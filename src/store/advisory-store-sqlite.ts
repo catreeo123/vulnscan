@@ -1,4 +1,4 @@
-import type { Advisory, AdvisoryStore } from './types.js'
+import type { Advisory, AdvisoryStore } from '../core/types.js'
 import {
   openDb,
   upsertAdvisory,

@@ -1,7 +1,7 @@
-import type { Advisory, AdvisoryStore, SemverRange } from './types.js'
-import { incomplete } from './warnings.js'
-import type { ScanWarning } from './warnings.js'
-import { resolveAdvisorySeverity } from './severity-mapper.js'
+import type { Advisory, AdvisoryStore, SemverRange } from '../core/types.js'
+import { incomplete } from '../core/warnings.js'
+import type { ScanWarning } from '../core/warnings.js'
+import { resolveAdvisorySeverity } from '../output/severity-mapper.js'
 
 const GITHUB_API = 'https://api.github.com'
 const PER_PAGE = 100

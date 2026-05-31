@@ -3,8 +3,8 @@ import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'no
 import { dirname } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
-import { DB_PATH } from './local-db.js'
-import { scrubSecrets } from './secrets.js'
+import { DB_PATH } from '../store/local-db.js'
+import { scrubSecrets } from '../core/secrets.js'
 
 const RELEASES_API = 'https://api.github.com/repos/catreeo123/vulnscan/releases/tags/db-latest'
 const ASSET_NAME = 'db.sqlite.gz'
