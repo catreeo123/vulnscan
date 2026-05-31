@@ -1,16 +1,16 @@
-# Graph Report - security-scan-cli  (2026-05-29)
+# Graph Report - security-scan-cli  (2026-05-31)
 
 ## Corpus Check
-- 65 files · ~69,187 words
+- 65 files · ~70,739 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 734 nodes · 1062 edges · 56 communities (43 shown, 13 thin omitted)
+- 753 nodes · 1091 edges · 56 communities (43 shown, 13 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 17 edges (avg confidence: 0.81)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `14829b04`
+- Built from commit: `e5bf8460`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -75,13 +75,13 @@
 1. `Glossary` - 21 edges
 2. `main()` - 19 edges
 3. `run()` - 18 edges
-4. `Changelog` - 15 edges
+4. `Changelog` - 17 edges
 5. `vulnscan — Architecture Overview` - 14 edges
-6. `informational()` - 13 edges
-7. `syncIfStale()` - 12 edges
-8. `runScan()` - 12 edges
-9. `ScanWarning` - 12 edges
-10. `incomplete()` - 12 edges
+6. `InMemoryAdvisoryStore` - 13 edges
+7. `informational()` - 13 edges
+8. `syncIfStale()` - 12 edges
+9. `runScan()` - 12 edges
+10. `ScanWarning` - 12 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Issue #004: Incremental GitHub Advisory Sync` --references--> `github-advisory-sync module`  [EXTRACTED]
@@ -102,23 +102,23 @@
 
 ### Community 0 - "CLI Entry & Architecture Docs"
 Cohesion: 0.06
-Nodes (58): openStore(), SqliteAdvisoryStore, matchAffected(), bootstrapDb(), maybeBootstrap(), resolveAssetUrl(), parseArgs(), computeExitCode() (+50 more)
+Nodes (59): openStore(), SqliteAdvisoryStore, matchAffected(), bootstrapDb(), maybeBootstrap(), resolveAssetUrl(), parseArgs(), computeExitCode() (+51 more)
 
 ### Community 1 - "CLI Args & Scan Pipeline"
 Cohesion: 0.06
-Nodes (36): fetchWithRetry(), GhAdvisory, ghAdvisoryToAdvisories(), GhVuln, mapSeverity(), parseLinkNext(), syncGithubAdvisories(), SyncGithubOptions (+28 more)
+Nodes (38): fetchWithRetry(), GhAdvisory, ghAdvisoryToAdvisories(), GhVuln, mapSeverity(), parseGhRange(), parseLinkNext(), syncGithubAdvisories() (+30 more)
 
 ### Community 2 - "Advisory Database Layer"
-Cohesion: 0.07
-Nodes (34): buildAncestryMap(), LockfileV2, PackageEntry, lockfile, map, mapAFirst, mapBFirst, packageJson (+26 more)
+Cohesion: 0.04
+Nodes (47): [0.0.1] — initial release, [0.1.0] — 2026-05-27, [0.1.1] — 2026-05-27, [0.2.0] — 2026-05-27, [0.2.10] — 2026-05-29, [0.2.11] — 2026-05-30, [0.2.12] — 2026-05-31, [0.2.1] — 2026-05-27 (+39 more)
 
 ### Community 3 - "Semver Matching & E2E Tests"
 Cohesion: 0.07
-Nodes (43): matchAffected tests, vulnscan architecture doc, database schema notes, module responsibilities table, getFailOn, main, safeClose, shouldFail (+35 more)
+Nodes (33): buildAncestryMap(), LockfileV2, PackageEntry, lockfile, map, mapAFirst, mapBFirst, packageJson (+25 more)
 
 ### Community 4 - "Range Match Logic"
-Cohesion: 0.06
-Nodes (34): [0.0.1] — initial release, [0.1.0] — 2026-05-27, [0.1.1] — 2026-05-27, [0.2.0] — 2026-05-27, [0.2.10] — 2026-05-29, [0.2.1] — 2026-05-27, [0.2.2] — 2026-05-27, [0.2.3] — 2026-05-27 (+26 more)
+Cohesion: 0.07
+Nodes (43): matchAffected tests, vulnscan architecture doc, database schema notes, module responsibilities table, getFailOn, main, safeClose, shouldFail (+35 more)
 
 ### Community 5 - "Output Rendering"
 Cohesion: 0.11
@@ -138,27 +138,27 @@ Nodes (21): code:block1 (OSV (Google)                          GitHub Advisory D
 
 ### Community 9 - "GitHub Advisory Sync"
 Cohesion: 0.09
-Nodes (22): advisories, after, before, database, dbPath, expectedOrder, first, forA (+14 more)
+Nodes (16): advisories, cancelFn, firstRangeHit, malAdvisory, malwareItem, mockFetch, multiRangeItem, reviewedItem (+8 more)
 
 ### Community 10 - "E2E Test Fixtures"
 Cohesion: 0.09
-Nodes (22): Claude Code Skill, CLI commands, code:block1 (vulnscan scan .), Config file, Data flow, Failure threshold, Further Notes, GitHub token (+14 more)
+Nodes (22): advisories, after, before, database, dbPath, expectedOrder, first, forA (+14 more)
 
 ### Community 11 - "Sync Test Helpers"
 Cohesion: 0.09
-Nodes (20): Agent skills, AI Integration, Architecture, code:bash (npm test                                    # run all tests ), code:block2 (cli.ts → parseArgs → [scan | check | update | help]), code:json ({), code:typescript (const syncStub = vi.fn().mockResolvedValue([])), code:typescript (const written: string[] = []) (+12 more)
+Nodes (22): Claude Code Skill, CLI commands, code:block1 (vulnscan scan .), Config file, Data flow, Failure threshold, Further Notes, GitHub token (+14 more)
 
 ### Community 12 - "Ancestry Tests"
+Cohesion: 0.09
+Nodes (20): Agent skills, AI Integration, Architecture, code:bash (npm test                                    # run all tests ), code:block2 (cli.ts → parseArgs → [scan | check | update | help]), code:json ({), code:typescript (const syncStub = vi.fn().mockResolvedValue([])), code:typescript (const written: string[] = []) (+12 more)
+
+### Community 13 - "Orchestrator Test Helpers"
 Cohesion: 0.11
 Nodes (22): ADR 0001: Per-Source Fetch Strategy, Affected Range Match (semver evaluation), Lockfile Ancestry Tracker (via BFS), Deduplication (cross-source merge by CVE + package), Finding (canonical output unit), GitHub Advisory REST Pagination Strategy, Grouped Output Renderer (severity-grouped view), Incremental GitHub Advisory Sync (+14 more)
 
-### Community 13 - "Orchestrator Test Helpers"
+### Community 14 - "Arg Parser Core"
 Cohesion: 0.1
 Nodes (19): CLI_PATH, db, dbp, deps, dir, __dirname, findings, first (+11 more)
-
-### Community 14 - "Arg Parser Core"
-Cohesion: 0.11
-Nodes (12): cancelFn, malAdvisory, malwareItem, mockFetch, reviewedItem, since, start, store (+4 more)
 
 ### Community 15 - "Renderer Module"
 Cohesion: 0.15
@@ -200,25 +200,25 @@ Nodes (9): code:block1 (resolveAdvisorySeverity(type, label, id):), Further Note
 Cohesion: 0.2
 Nodes (9): ADR-0002 — AdvisoryStore repository seam, Consequences, Context, Decision, `github-advisory-sync.test.ts`, Pilot results, `scanner.test.ts`, Stumbling block: batch transaction in `osv-sync.ts` (+1 more)
 
-### Community 25 - "Deferred Work"
-Cohesion: 0.22
-Nodes (7): cveFinding, finding1, finding2, ghFinding, ghsaFinding, osvFinding, result
-
-### Community 27 - "Community 27"
+### Community 26 - "Community 26"
 Cohesion: 0.22
 Nodes (8): normalizeRawRange(), advisory, advisory2, findings, lodashAdvisory, malAdvisory, multiRangeAdvisory, prereleaseAdvisory
 
+### Community 27 - "Community 27"
+Cohesion: 0.22
+Nodes (7): cveFinding, finding1, finding2, ghFinding, ghsaFinding, osvFinding, result
+
 ### Community 28 - "Community 28"
-Cohesion: 0.25
-Nodes (5): incompleteWarning, now, origWrite, store, written
+Cohesion: 0.43
+Nodes (4): Advisory, AdvisoryStore, Dep, SemverRange
 
 ### Community 29 - "Community 29"
 Cohesion: 0.25
-Nodes (7): ADR 0001 — Per-Source Fetch Strategy, Consequences, Context, Decision, GitHub Advisory: REST API pagination, OSV: full dump download, Socket.dev: dropped
+Nodes (5): incompleteWarning, now, origWrite, store, written
 
 ### Community 30 - "Community 30"
-Cohesion: 0.48
-Nodes (3): Advisory, AdvisoryStore, SemverRange
+Cohesion: 0.25
+Nodes (7): ADR 0001 — Per-Source Fetch Strategy, Consequences, Context, Decision, GitHub Advisory: REST API pagination, OSV: full dump download, Socket.dev: dropped
 
 ### Community 31 - "Community 31"
 Cohesion: 0.29
@@ -269,24 +269,24 @@ Cohesion: 0.5
 Nodes (4): Ancestry Map Tests, buildAncestryMap() — BFS transitive dep → root mapping, BFS ancestry traversal — first root in declaration order wins shared dep, npm resolution algorithm — nearest node_modules ancestor wins for nested packages
 
 ## Knowledge Gaps
-- **387 isolated node(s):** `HelpTopic`, `ParsedArgs`, `KNOWN_FLAGS`, `KNOWN_BOOLEAN_FLAGS`, `KNOWN_COMMANDS` (+382 more)
+- **404 isolated node(s):** `HelpTopic`, `ParsedArgs`, `KNOWN_FLAGS`, `KNOWN_BOOLEAN_FLAGS`, `KNOWN_COMMANDS` (+399 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **13 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `run()` connect `CLI Entry & Architecture Docs` to `Advisory Database Layer`, `Ancestry Builder`, `Lockfile Ancestry`?**
-  _High betweenness centrality (0.015) - this node is a cross-community bridge._
-- **Why does `w` connect `Vitest Config` to `Advisory Database Layer`?**
+- **Why does `run()` connect `CLI Entry & Architecture Docs` to `Semver Matching & E2E Tests`, `Ancestry Builder`, `Lockfile Ancestry`?**
   _High betweenness centrality (0.014) - this node is a cross-community bridge._
-- **Why does `InMemoryAdvisoryStore` connect `Community 26` to `Community 32`, `CLI Entry & Architecture Docs`, `Community 30`?**
-  _High betweenness centrality (0.010) - this node is a cross-community bridge._
+- **Why does `w` connect `Vitest Config` to `Semver Matching & E2E Tests`?**
+  _High betweenness centrality (0.013) - this node is a cross-community bridge._
+- **Why does `InMemoryAdvisoryStore` connect `Deferred Work` to `Community 32`, `CLI Args & Scan Pipeline`, `CLI Entry & Architecture Docs`, `GitHub Advisory Sync`, `Community 28`?**
+  _High betweenness centrality (0.011) - this node is a cross-community bridge._
 - **What connects `HelpTopic`, `ParsedArgs`, `KNOWN_FLAGS` to the rest of the system?**
-  _387 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _404 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `CLI Entry & Architecture Docs` be split into smaller, more focused modules?**
   _Cohesion score 0.06 - nodes in this community are weakly interconnected._
 - **Should `CLI Args & Scan Pipeline` be split into smaller, more focused modules?**
   _Cohesion score 0.06 - nodes in this community are weakly interconnected._
 - **Should `Advisory Database Layer` be split into smaller, more focused modules?**
-  _Cohesion score 0.07 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.04 - nodes in this community are weakly interconnected._

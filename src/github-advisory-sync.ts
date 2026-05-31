@@ -130,22 +130,31 @@ function ghAdvisoryToAdvisories(
   const { severity, warning } = resolveAdvisorySeverity(advisoryType, item.severity, id)
   const itemWarnings: ScanWarning[] = warning ? [warning] : []
 
-  const advisories = npmVulns
-    .filter((v) => v.package.name && v.vulnerable_version_range)
-    .map((v): Advisory => {
-      const ghsaMatch = item.html_url.match(/GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}/i)
-      const canonicalId = ghsaMatch ? ghsaMatch[0].toUpperCase() : item.ghsa_id.toUpperCase()
-      return {
-        id,
-        canonicalId,
-        type: advisoryType,
-        packageName: v.package.name,
-        ranges: parseGhRange(v.vulnerable_version_range!),
-        severity,
-        title: item.summary,
-        url: item.html_url,
-      }
-    })
+  const ghsaMatch = item.html_url.match(/GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}/i)
+  const canonicalId = ghsaMatch ? ghsaMatch[0].toUpperCase() : item.ghsa_id.toUpperCase()
+
+  // One advisory lists a package once per affected range (GitHub returns separate
+  // vulnerabilities[] entries for disjoint ranges). All entries for the same package
+  // share PK (id, packageName), so union their ranges into ONE Advisory — otherwise
+  // the last-write-wins upsert drops every range but the last (silent false negative).
+  const rangesByPackage = new Map<string, SemverRange[]>()
+  for (const v of npmVulns) {
+    if (!v.package.name || !v.vulnerable_version_range) continue
+    const existing = rangesByPackage.get(v.package.name) ?? []
+    existing.push(...parseGhRange(v.vulnerable_version_range))
+    rangesByPackage.set(v.package.name, existing)
+  }
+
+  const advisories: Advisory[] = [...rangesByPackage].map(([packageName, ranges]) => ({
+    id,
+    canonicalId,
+    type: advisoryType,
+    packageName,
+    ranges,
+    severity,
+    title: item.summary,
+    url: item.html_url,
+  }))
 
   return { advisories, warnings: itemWarnings }
 }

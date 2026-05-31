@@ -242,6 +242,47 @@ describe('C1 — upsertAdvisory refreshes last_seen_in_full_sync', () => {
   })
 })
 
+describe('B2 — source-aware prune exempts GitHub-Source advisories (#49)', () => {
+  it('a static GitHub advisory (stale last_seen, never re-upserted) survives the OSV prune; a stale OSV advisory is pruned', () => {
+    const database = makeDb()
+    const old = Date.now() - 30 * 24 * 60 * 60 * 1000 // 30 days ago
+
+    // GitHub Source: inserted once via the incremental GitHub path, then never seen again
+    // because it was not updated upstream (GitHub Sync uses an `updated>=since` cursor).
+    upsertAdvisory(database, {
+      id: 'GHSA-static-gh-0001',
+      canonicalId: 'GHSA-STATIC-GH-0001',
+      type: 'cve',
+      packageName: 'gh-only-pkg',
+      ranges: [{ rawRange: '< 2.0.0' }],
+      severity: 'high',
+      title: 'GitHub-only advisory, never updated upstream',
+      url: 'https://github.com/advisories/GHSA-static-gh-0001',
+    })
+    // Freeze its last_seen 30 days in the past — i.e. it has not been re-upserted since.
+    database.prepare('UPDATE advisories SET last_seen_in_full_sync = ? WHERE id = ?').run(old, 'GHSA-static-gh-0001')
+
+    // OSV Source: vanished from the dump and last seen 30 days ago — genuinely stale, must be pruned.
+    upsertAdvisoryFromFullSync(database, {
+      id: 'CVE-2099-stale-osv',
+      canonicalId: 'CVE-2099-STALE-OSV',
+      type: 'cve',
+      packageName: 'osv-stale-pkg',
+      ranges: [{ introduced: '0', fixed: '1.0.0' }],
+      severity: 'high',
+      title: 'Stale OSV advisory',
+      url: 'https://osv.dev/vulnerability/CVE-2099-stale-osv',
+    }, old)
+
+    pruneStaleAdvisories(database, Date.now(), 7 * 24 * 60 * 60 * 1000)
+
+    // The GitHub-Source advisory must NOT be pruned by an OSV full-Sync prune.
+    expect(getAdvisoriesForPackage(database, 'gh-only-pkg')).toHaveLength(1)
+    // The genuinely-stale OSV-Source advisory is still pruned.
+    expect(getAdvisoriesForPackage(database, 'osv-stale-pkg')).toHaveLength(0)
+  })
+})
+
 describe('C2 — migration backfills canonical_id', () => {
   it('migration backfills canonical_id from URL for pre-migration rows', () => {
     // Seed a DB with the old schema (no canonical_id column)

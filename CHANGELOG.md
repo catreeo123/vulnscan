@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.12] — 2026-05-31
+
+### Fixes
+
+- **Multi-range Advisory no longer overwritten on upsert (silent false negative, #48)** — A single GitHub Advisory that lists one package across multiple disjoint version ranges (e.g. axios GHSA-3g43-6gmg-66jw: `>= 1.0.0, < 1.15.2` and `>= 0.19.0, < 0.31.1`) emitted one Advisory per `vulnerabilities[]` entry. All shared PK `(id, packageName)`, so the last-write-wins upsert dropped every range but the last — a version in a dropped range produced no Finding. `ghAdvisoryToAdvisories` now groups npm vulns by package and unions their ranges into one Advisory; `osvEntryToAdvisories` does the same across multiple `affected[]` blocks for one package. The `imported` count now reflects unique advisories written.
+- **GitHub-Source advisories no longer pruned by the OSV full Sync (silent false negative, #49)** — `pruneStaleAdvisories` deleted by `last_seen_in_full_sync` with no Source filter. Because GitHub Sync is incremental (`updated>=since`), a static advisory is upserted once and its timestamp then freezes, so after the 7-day grace the OSV prune deleted live GitHub-only and malware advisories. Added a `source` column (migration backfills from url); the prune now deletes only `source = 'osv'` rows, exempting GitHub-Source advisories by construction.
+
 ## [0.2.11] — 2026-05-30
 
 ### Fixes

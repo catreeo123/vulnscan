@@ -5,12 +5,14 @@ import { Readable } from 'node:stream'
 import { createWriteStream, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Advisory, AdvisoryStore, SemverRange } from './types.js'
+import type { Advisory, AdvisoryStore, SemverRange, Severity } from './types.js'
 import { resolveAdvisorySeverity } from './severity-mapper.js'
 import { informational } from './warnings.js'
 import type { ScanWarning } from './warnings.js'
 
 const OSV_NPM_URL = 'https://osv-vulnerabilities.storage.googleapis.com/npm/all.zip'
+
+const SEVERITY_RANK: Record<Severity, number> = { low: 0, moderate: 1, high: 2, critical: 3 }
 
 type OsvEvent = { introduced?: string; fixed?: string; last_affected?: string }
 type OsvRange = { type: string; events: OsvEvent[] }
@@ -122,8 +124,21 @@ export function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[];
   const id = getBestId(entry)
   const type: 'cve' | 'mal' = id.startsWith('MAL-') ? 'mal' : 'cve'
 
-  const advisories: Advisory[] = []
+  const url = `https://osv.dev/vulnerability/${entry.id}`
+  const ghsaMatch = entry.id.match(/^GHSA-/i) ? entry.id : entry.aliases?.find((a) => a.match(/^GHSA-/i))
+  // GHSA ids are the stable cross-source identifier; prefer them when present in entry.id or aliases.
+  // Known limitation: OSV entries with no GHSA alias (e.g. CVE-only entries not mirrored to GitHub
+  // Advisory) will use the CVE id as canonicalId. If the same advisory exists in GitHub Advisory,
+  // it will carry a GHSA canonicalId, causing the deduplicator to treat them as distinct findings.
+  // A cross-reference lookup would fix this but is out of scope — the advisory databases eventually
+  // converge and GHSA entries in OSV carry the GHSA alias, so in practice this gap is rare.
+  const canonicalId = ghsaMatch ? ghsaMatch.toUpperCase() : id
+
   const warnings: ScanWarning[] = []
+  // One OSV entry can list the same package across multiple affected[] blocks. They share
+  // PK (id, packageName), so coalesce their ranges into ONE Advisory — otherwise the
+  // last-write-wins upsert drops every block but the last (silent false negative, B1/#48).
+  const byPackage = new Map<string, { ranges: SemverRange[]; severity: Severity }>()
 
   for (const affected of allAffected) {
     const semverRanges = (affected.ranges ?? [])
@@ -142,15 +157,6 @@ export function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[];
 
     if (semverRanges.length === 0) continue
 
-    const url = `https://osv.dev/vulnerability/${entry.id}`
-    const ghsaMatch = entry.id.match(/^GHSA-/i) ? entry.id : entry.aliases?.find((a) => a.match(/^GHSA-/i))
-    // GHSA ids are the stable cross-source identifier; prefer them when present in entry.id or aliases.
-    // Known limitation: OSV entries with no GHSA alias (e.g. CVE-only entries not mirrored to GitHub
-    // Advisory) will use the CVE id as canonicalId. If the same advisory exists in GitHub Advisory,
-    // it will carry a GHSA canonicalId, causing the deduplicator to treat them as distinct findings.
-    // A cross-reference lookup would fix this but is out of scope — the advisory databases eventually
-    // converge and GHSA entries in OSV carry the GHSA alias, so in practice this gap is rare.
-    const canonicalId = ghsaMatch ? ghsaMatch.toUpperCase() : id
     // Malware override (mal → critical) lives in resolveAdvisorySeverity so the OSV
     // and GitHub Advisory paths share one rule and cannot drift (fix #26).
     const { severity: finalSeverity, warning } = resolveAdvisorySeverity(
@@ -159,17 +165,27 @@ export function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[];
       id,
     )
     if (warning) warnings.push(warning)
-    advisories.push({
-      id,
-      canonicalId,
-      type,
-      packageName: affected.package.name,
-      ranges: semverRanges,
-      severity: finalSeverity,
-      title: entry.summary ?? id,
-      url,
-    })
+
+    const existing = byPackage.get(affected.package.name)
+    if (existing) {
+      existing.ranges.push(...semverRanges)
+      // Fail-safe: keep the most severe rating seen across blocks for the same package.
+      if (SEVERITY_RANK[finalSeverity] > SEVERITY_RANK[existing.severity]) existing.severity = finalSeverity
+    } else {
+      byPackage.set(affected.package.name, { ranges: semverRanges, severity: finalSeverity })
+    }
   }
+
+  const advisories: Advisory[] = [...byPackage].map(([packageName, { ranges, severity }]) => ({
+    id,
+    canonicalId,
+    type,
+    packageName,
+    ranges,
+    severity,
+    title: entry.summary ?? id,
+    url,
+  }))
 
   return { advisories, warnings }
 }

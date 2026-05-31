@@ -57,6 +57,7 @@ export function openDb(path = DB_PATH): Database.Database {
       canonical_id TEXT NOT NULL DEFAULT '',
       synced_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER) * 1000),
       last_seen_in_full_sync INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (id, package_name)
     );
     CREATE INDEX IF NOT EXISTS idx_advisories_pkg ON advisories(package_name);
@@ -90,16 +91,26 @@ export function openDb(path = DB_PATH): Database.Database {
       tx(rows)
     }
   }
+  if (!cols.has('source')) {
+    safeAddColumn(db, `source TEXT NOT NULL DEFAULT ''`)
+    // Backfill source for pre-migration rows from the advisory url so the source-aware
+    // prune below can tell OSV rows (prunable) from GitHub rows (exempt). Unknown urls
+    // stay '' and are never pruned (conservative — never silently drop an Advisory).
+    db.exec(`UPDATE advisories SET source = 'github' WHERE source = '' AND url LIKE '%github.com%'`)
+    db.exec(`UPDATE advisories SET source = 'osv' WHERE source = '' AND url LIKE '%osv.dev%'`)
+  }
   return db
 }
 
-// last_seen_in_full_sync records "last touched by any source" (not strictly full-sync only).
-// The GH path sets it to Date.now() so a GH-tracked advisory is never stale-pruned.
+// The GitHub Source upsert. It stamps source='github' so pruneStaleAdvisories (an OSV
+// full-Sync operation) never deletes it: GitHub Sync is incremental, so a static advisory
+// is upserted once and its last_seen_in_full_sync then freezes — the source tag, not a
+// fresh timestamp, is what keeps it from being stale-pruned.
 export function upsertAdvisory(db: Database.Database, advisory: Advisory): void {
   const now = Date.now()
   db.prepare(`
-    INSERT INTO advisories (id, type, package_name, affected_ranges_json, severity, title, url, canonical_id, synced_at, last_seen_in_full_sync)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO advisories (id, type, package_name, affected_ranges_json, severity, title, url, canonical_id, synced_at, last_seen_in_full_sync, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'github')
     ON CONFLICT (id, package_name) DO UPDATE SET
       type = excluded.type,
       affected_ranges_json = excluded.affected_ranges_json,
@@ -108,7 +119,8 @@ export function upsertAdvisory(db: Database.Database, advisory: Advisory): void 
       url = excluded.url,
       canonical_id = excluded.canonical_id,
       synced_at = excluded.synced_at,
-      last_seen_in_full_sync = excluded.last_seen_in_full_sync
+      last_seen_in_full_sync = excluded.last_seen_in_full_sync,
+      source = excluded.source
   `).run(
     advisory.id,
     advisory.type,
@@ -129,8 +141,8 @@ export function upsertAdvisoryFromFullSync(
   fullSyncStartedAt: number,
 ): void {
   db.prepare(`
-    INSERT INTO advisories (id, type, package_name, affected_ranges_json, severity, title, url, canonical_id, synced_at, last_seen_in_full_sync)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO advisories (id, type, package_name, affected_ranges_json, severity, title, url, canonical_id, synced_at, last_seen_in_full_sync, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'osv')
     ON CONFLICT (id, package_name) DO UPDATE SET
       type = excluded.type,
       affected_ranges_json = excluded.affected_ranges_json,
@@ -139,7 +151,8 @@ export function upsertAdvisoryFromFullSync(
       url = excluded.url,
       canonical_id = excluded.canonical_id,
       synced_at = excluded.synced_at,
-      last_seen_in_full_sync = excluded.last_seen_in_full_sync
+      last_seen_in_full_sync = excluded.last_seen_in_full_sync,
+      source = excluded.source
   `).run(
     advisory.id,
     advisory.type,
@@ -160,8 +173,12 @@ export function pruneStaleAdvisories(
   gracePeriodMs: number,
 ): number {
   const cutoff = fullSyncStartedAt - gracePeriodMs
+  // Only OSV-Source advisories are prunable: the OSV full dump is authoritative for what
+  // still exists, so a row missing from it past the grace window is genuinely stale. GitHub
+  // Source advisories are exempt — GitHub Sync is incremental and never re-confirms a static
+  // advisory, so pruning by timestamp alone would silently drop live Findings (B2/#49).
   const result = db.prepare(
-    'DELETE FROM advisories WHERE last_seen_in_full_sync < ? AND last_seen_in_full_sync > 0',
+    "DELETE FROM advisories WHERE source = 'osv' AND last_seen_in_full_sync < ? AND last_seen_in_full_sync > 0",
   ).run(cutoff)
   return result.changes
 }

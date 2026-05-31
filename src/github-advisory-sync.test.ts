@@ -1,5 +1,7 @@
 import { vi, it, expect, beforeEach, describe } from 'vitest'
 import type { AdvisoryStore } from './types.js'
+import { InMemoryAdvisoryStore } from './advisory-store-memory.js'
+import { matchAffected } from './affected-range-matcher.js'
 
 function makeStore(): AdvisoryStore {
   return {
@@ -362,4 +364,47 @@ it('returns incomplete warning when maxPages cap is reached', async () => {
   expect(result.warnings).toHaveLength(1)
   expect(result.warnings[0].class).toBe('incomplete')
   expect(result.warnings[0].message).toMatch(/page limit/)
+})
+
+// ── B1 (#48): multi-range Advisory must not be overwritten on upsert ──────────
+
+it('preserves every range when one GitHub Advisory lists a package in multiple disjoint ranges (B1, #48)', async () => {
+  // Real GitHub shape: axios GHSA-3g43-6gmg-66jw covers two disjoint version lines
+  // as two separate vulnerabilities[] entries for the SAME package.
+  const multiRangeItem = {
+    ghsa_id: 'GHSA-3g43-6gmg-66jw',
+    cve_id: null,
+    severity: 'high',
+    html_url: 'https://github.com/advisories/GHSA-3g43-6gmg-66jw',
+    summary: 'axios vulnerable across two major lines',
+    vulnerabilities: [
+      { package: { ecosystem: 'npm', name: 'axios' }, vulnerable_version_range: '>= 1.0.0, < 1.15.2', first_patched_version: '1.15.2' },
+      { package: { ecosystem: 'npm', name: 'axios' }, vulnerable_version_range: '>= 0.19.0, < 0.31.1', first_patched_version: '0.31.1' },
+    ],
+  }
+
+  const mockFetch = vi.fn()
+    // reviewed pass — the multi-range advisory
+    .mockImplementationOnce(() =>
+      Promise.resolve(new Response(JSON.stringify([multiRangeItem]), { status: 200, headers: { 'Content-Type': 'application/json' } })),
+    )
+    // malware pass — empty
+    .mockImplementationOnce(() =>
+      Promise.resolve(new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })),
+    )
+  vi.stubGlobal('fetch', mockFetch)
+
+  const store = new InMemoryAdvisoryStore()
+  const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+  const result = await syncGithubAdvisories(store, undefined)
+
+  const advisories = store.getForPackage('axios')
+  // A version in the FIRST range must still produce a Finding via Affected Range Match.
+  // The bug drops the first range (last-write-wins upsert), so 1.10.0 is a false negative.
+  const firstRangeHit = matchAffected({ name: 'axios', version: '1.10.0' }, advisories)
+  const secondRangeHit = matchAffected({ name: 'axios', version: '0.25.0' }, advisories)
+  expect(firstRangeHit).toHaveLength(1)
+  expect(secondRangeHit).toHaveLength(1)
+  // imported count must reflect unique advisories written, not raw vulnerabilities[] entries
+  expect(result.imported).toBe(1)
 })

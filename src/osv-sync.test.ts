@@ -2,6 +2,8 @@ import { vi, it, describe, expect, beforeEach } from 'vitest'
 import AdmZip from 'adm-zip'
 import type { AdvisoryStore } from './types.js'
 import { eventsToRanges, osvEntryToAdvisories } from './osv-sync.js'
+import { InMemoryAdvisoryStore } from './advisory-store-memory.js'
+import { matchAffected } from './affected-range-matcher.js'
 
 function makeZipResponse(entries: { name: string; content: string }[]): Response {
   const zip = new AdmZip()
@@ -415,5 +417,32 @@ describe('osvEntryToAdvisories MAL-* Supply Chain Signals', () => {
     expect(advisories[0].ranges).toHaveLength(1)
     expect(advisories[0].ranges[0]).toEqual({ introduced: '1.0.0', fixed: '1.2.0' })
     expect(advisories[0].type).toBe('cve')
+  })
+})
+
+// ── B1 (#48): multiple affected[] blocks for one package must coalesce, not overwrite ──
+
+describe('osvEntryToAdvisories multi-affected-block coalescing (B1, #48)', () => {
+  it('coalesces multiple affected[] blocks for the same package so no range is lost on upsert', () => {
+    const entry = {
+      id: 'CVE-2099-0001',
+      aliases: ['CVE-2099-0001'],
+      summary: 'one package, two disjoint version lines',
+      affected: [
+        { package: { ecosystem: 'npm', name: 'lodash' }, ranges: [{ type: 'SEMVER', events: [{ introduced: '4.0.0' }, { fixed: '4.17.12' }] }] },
+        { package: { ecosystem: 'npm', name: 'lodash' }, ranges: [{ type: 'SEMVER', events: [{ introduced: '3.0.0' }, { fixed: '3.10.2' }] }] },
+      ],
+    }
+
+    const { advisories } = osvEntryToAdvisories(entry)
+
+    // Store through the real PK-modelling store: same (id, packageName) blocks overwrite.
+    const store = new InMemoryAdvisoryStore()
+    for (const a of advisories) store.upsertFromFullSync(a, 1_000)
+    const stored = store.getForPackage('lodash')
+
+    // A version in EACH original block must still produce a Finding via Affected Range Match.
+    expect(matchAffected({ name: 'lodash', version: '4.5.0' }, stored)).toHaveLength(1)
+    expect(matchAffected({ name: 'lodash', version: '3.5.0' }, stored)).toHaveLength(1)
   })
 })
