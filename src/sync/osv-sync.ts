@@ -5,14 +5,13 @@ import { Readable } from 'node:stream'
 import { createWriteStream, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Advisory, AdvisoryStore, SemverRange, Severity } from '../core/types.js'
+import type { Advisory, AdvisoryStore, SemverRange } from '../core/types.js'
 import { resolveAdvisorySeverity } from '../output/severity-mapper.js'
+import { assembleAdvisories, type PackageContribution } from './advisory-assembler.js'
 import { incomplete, informational } from '../core/warnings.js'
 import type { ScanWarning } from '../core/warnings.js'
 
 const OSV_NPM_URL = 'https://osv-vulnerabilities.storage.googleapis.com/npm/all.zip'
-
-const SEVERITY_RANK: Record<Severity, number> = { low: 0, moderate: 1, high: 2, critical: 3 }
 
 type OsvEvent = { introduced?: string; fixed?: string; last_affected?: string }
 type OsvRange = { type: string; events: OsvEvent[] }
@@ -155,10 +154,10 @@ export function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[];
   const canonicalId = ghsaMatch ? ghsaMatch.toUpperCase() : id
 
   const warnings: ScanWarning[] = []
-  // One OSV entry can list the same package across multiple affected[] blocks. They share
-  // PK (id, packageName), so coalesce their ranges into ONE Advisory — otherwise the
-  // last-write-wins upsert drops every block but the last (silent false negative, B1/#48).
-  const byPackage = new Map<string, { ranges: SemverRange[]; severity: Severity }>()
+  // One OSV entry can list the same package across multiple affected[] blocks; their ranges
+  // are coalesced into ONE Advisory per (id, packageName) by the shared advisory-assembler
+  // (see #48/B1 — otherwise the last-write-wins upsert drops every block but the last).
+  const contributions: PackageContribution[] = []
 
   for (const affected of allAffected) {
     const semverRanges = (affected.ranges ?? [])
@@ -186,26 +185,13 @@ export function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[];
     )
     if (warning) warnings.push(warning)
 
-    const existing = byPackage.get(affected.package.name)
-    if (existing) {
-      existing.ranges.push(...semverRanges)
-      // Fail-safe: keep the most severe rating seen across blocks for the same package.
-      if (SEVERITY_RANK[finalSeverity] > SEVERITY_RANK[existing.severity]) existing.severity = finalSeverity
-    } else {
-      byPackage.set(affected.package.name, { ranges: semverRanges, severity: finalSeverity })
-    }
+    contributions.push({ packageName: affected.package.name, ranges: semverRanges, severity: finalSeverity })
   }
 
-  const advisories: Advisory[] = [...byPackage].map(([packageName, { ranges, severity }]) => ({
-    id,
-    canonicalId,
-    type,
-    packageName,
-    ranges,
-    severity,
-    title: entry.summary ?? id,
-    url,
-  }))
+  const advisories = assembleAdvisories(
+    { id, canonicalId, type, title: entry.summary ?? id, url },
+    contributions,
+  )
 
   return { advisories, warnings }
 }
