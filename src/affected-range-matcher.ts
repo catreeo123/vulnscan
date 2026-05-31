@@ -6,7 +6,10 @@ export function normalizeRawRange(raw: string): string {
 }
 
 function buildSemverRange(range: SemverRange): string {
-  const lower = `>=${range.introduced ?? '0'}`
+  // `|| '0'`, not `?? '0'`: an empty-string introduced (allowed by SemverRange, and OSV treats
+  // "" as equivalent to "0") is not null/undefined, so `??` would let it through and produce
+  // ">=" — an invalid range that semver.satisfies() silently rejects as false (false negative).
+  const lower = `>=${range.introduced || '0'}`
   if (range.fixed) return `${lower} <${range.fixed}`
   if (range.lastAffected) return `${lower} <=${range.lastAffected}`
   return lower

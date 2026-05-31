@@ -77,6 +77,13 @@ describe('eventsToRanges', () => {
   it('returns empty array for empty events', () => {
     expect(eventsToRanges([])).toEqual([])
   })
+
+  it('synthesizes introduced:0 for a fixed-only-first event (no preceding introduced)', () => {
+    // Mirror the last_affected-first handling: a bare { fixed } means "all versions before
+    // fixed are vulnerable". The old guard `&& current` dropped it silently, losing the entire
+    // advisory (false negative). It must produce { introduced: '0', fixed }.
+    expect(eventsToRanges([{ fixed: '1.2.3' }])).toEqual([{ introduced: '0', fixed: '1.2.3' }])
+  })
 })
 
 // ─── M2: all upserts run inside ONE batched transaction ───
@@ -285,6 +292,27 @@ it('increments skipped for entries with no npm-ecosystem affected packages', asy
   expect(result.imported).toBe(0)
 })
 
+it('recovers from a malformed entry whose affected[] block is missing package (does not abort sync)', async () => {
+  const malformed = JSON.stringify({
+    id: 'GHSA-malformed-0001',
+    summary: 'Missing package field',
+    affected: [{ ranges: [{ type: 'SEMVER', events: [{ introduced: '1.0.0' }] }] }],
+  })
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+    makeZipResponse([
+      { name: 'malformed.json', content: malformed },
+      { name: 'valid.json', content: validNpmEntry },
+    ])
+  ))
+  const store = makeStore()
+  const { syncOsv } = await import('./osv-sync.js')
+  // One malformed entry must be skipped, not abort the whole sync — the valid entry that
+  // follows it in the ZIP must still import (matches the per-row recovery contract).
+  const result = await syncOsv(store)
+  expect(result.skipped).toBe(1)
+  expect(result.imported).toBe(1)
+})
+
 it('recovers from per-row upsert failure: decrements imported, increments skipped', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
     makeZipResponse([{ name: 'valid.json', content: validNpmEntry }])
@@ -295,6 +323,9 @@ it('recovers from per-row upsert failure: decrements imported, increments skippe
   const result = await syncOsv(store)
   expect(result.imported).toBe(0)
   expect(result.skipped).toBe(1)
+  // A DB-write failure means advisories did not persist. The sync is incomplete and must
+  // signal exit 2 — silently reporting clean against a partially-populated DB is a false-clean.
+  expect(result.warnings.some((w) => w.class === 'incomplete')).toBe(true)
 })
 
 // ─── canonicalId selection: GHSA alias preferred over CVE fallback (issue #15) ───
@@ -417,6 +448,27 @@ describe('osvEntryToAdvisories MAL-* Supply Chain Signals', () => {
     expect(advisories[0].ranges).toHaveLength(1)
     expect(advisories[0].ranges[0]).toEqual({ introduced: '1.0.0', fixed: '1.2.0' })
     expect(advisories[0].type).toBe('cve')
+  })
+
+  it('MAL-6: MAL-* entry that also carries a CVE alias is still classified malware', () => {
+    // getBestId prefers the CVE alias for the display id, but a malicious package that also
+    // carries a CVE is still malware. Deriving `type` from the display id yields 'cve' and
+    // bypasses the mal→critical override, storing the package at the OSV-reported (here LOW)
+    // severity — below the default fail threshold. A false negative for a security tool.
+    const entry = {
+      id: 'MAL-2024-7777',
+      aliases: ['CVE-2024-12345'],
+      summary: 'Malicious package with a CVE alias',
+      affected: [{
+        package: { ecosystem: 'npm', name: 'evil-with-cve' },
+        versions: ['1.0.0'],
+        database_specific: { severity: 'LOW' },
+      }],
+    }
+    const { advisories } = osvEntryToAdvisories(entry)
+    expect(advisories).toHaveLength(1)
+    expect(advisories[0].type).toBe('mal')
+    expect(advisories[0].severity).toBe('critical')
   })
 })
 

@@ -69,6 +69,28 @@ it('updated filter date has no milliseconds (GitHub API rejects .000Z)', async (
   expect(url).not.toMatch(/updated=.*\.\d{3}Z/)
 })
 
+it('skips a malformed advisory with null vulnerabilities instead of throwing (no sync stall)', async () => {
+  // GitHub's schema allows `vulnerabilities: null`. The old code did `item.vulnerabilities.filter`,
+  // which throws — and since there is no per-item guard, the throw aborts the whole pass, the
+  // cursor never advances, and every future sync re-hits the same page (permanent stall →
+  // accumulating false negatives). Mirror the OSV path's null-safety: skip the item, keep going.
+  const malformed = {
+    ghsa_id: 'GHSA-xxxx-yyyy-zzzz', cve_id: null, severity: 'high',
+    html_url: 'https://github.com/advisories/GHSA-xxxx-yyyy-zzzz', summary: 's',
+    vulnerabilities: null,
+  }
+  const mockFetch = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify([malformed]), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    .mockResolvedValue(new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+  vi.stubGlobal('fetch', mockFetch)
+
+  const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+  const store = makeStore()
+  const result = await syncGithubAdvisories(store, undefined)
+  expect(result.skipped).toBeGreaterThanOrEqual(1)
+  expect(store.upsert).not.toHaveBeenCalled()
+})
+
 it('omits updated filter when since is non-finite (NaN or Infinity)', async () => {
   const mockFetch = makeEmptyFetch()
   vi.stubGlobal('fetch', mockFetch)

@@ -44,10 +44,25 @@ export async function syncIfStale(
   if (!osvStillStale && !ghStillStale) return warnings
 
   if (osvStillStale) {
-    const { fullSyncStartedAt, warnings: osvWarnings } = await syncOsv(store)
-    for (const w of osvWarnings) warnings.push(w)
-    store.pruneStale(fullSyncStartedAt, GRACE_PERIOD_MS)
-    store.setLastSyncedAt('osv', Date.now())
+    // OSV download is untrusted external infra; a transient HTTP/network failure must degrade
+    // to an `incomplete` warning (exit 2) — letting the Scan proceed against existing Local DB
+    // data — not crash out with exit 1 (which signals "findings"). Mirrors syncGithubSafe.
+    // Only the network Sync is guarded: a pruneStale/cursor failure is a local invariant and
+    // must still propagate (and must not advance the OSV cursor — see orchestrator tests).
+    let osvResult: Awaited<ReturnType<typeof syncOsv>> | null = null
+    try {
+      osvResult = await syncOsv(store)
+    } catch (err) {
+      const scrubbed = scrubSecrets((err as Error).message)
+      process.stderr.write(`OSV: sync failed (${scrubbed}) — proceeding with existing local data\n`)
+      warnings.push(incomplete(`OSV sync failed: ${scrubbed}`))
+    }
+    if (osvResult) {
+      const { fullSyncStartedAt, warnings: osvWarnings } = osvResult
+      for (const w of osvWarnings) warnings.push(w)
+      store.pruneStale(fullSyncStartedAt, GRACE_PERIOD_MS)
+      store.setLastSyncedAt('osv', Date.now())
+    }
   }
   if (ghStillStale) {
     const ghWarnings = await syncGithubSafe(store)
@@ -61,13 +76,31 @@ export async function syncIfStale(
 // Used by the `update` command. Returns the collected warnings so the caller can fail
 // safe (exit 2) on an `incomplete` sync instead of silently publishing degraded data.
 export async function runSync(store: AdvisoryStore): Promise<ScanWarning[]> {
-  const { fullSyncStartedAt, warnings: osvWarnings } = await syncOsv(store)
-  const ghWarnings = await syncGithubSafe(store)
-  store.pruneStale(fullSyncStartedAt, GRACE_PERIOD_MS)
-  store.setLastSyncedAt('osv', Date.now())
   // Build with push-loops, not spread — the warning arrays can be huge (issue #24).
   const warnings: ScanWarning[] = []
-  for (const w of osvWarnings) warnings.push(w)
+
+  // OSV bulk download is untrusted external infra: a transient network/HTTP failure must
+  // degrade to an `incomplete` warning (exit 2 — data may be missing) instead of propagating
+  // as an unhandled throw, which the CLI's top-level catch maps to exit 1 ("findings"). This
+  // mirrors syncIfStale and the GitHub path (syncGithubSafe is already guarded). A successful
+  // pull is required before pruning/advancing the OSV cursor — a failed sync must not delete
+  // live advisories against partial data, nor mask itself as a fresh successful sync.
+  let osvResult: Awaited<ReturnType<typeof syncOsv>> | null = null
+  try {
+    osvResult = await syncOsv(store)
+  } catch (err) {
+    const scrubbed = scrubSecrets((err as Error).message)
+    process.stderr.write(`OSV: sync failed (${scrubbed}) — proceeding with existing local data\n`)
+    warnings.push(incomplete(`OSV sync failed: ${scrubbed}`))
+  }
+
+  const ghWarnings = await syncGithubSafe(store)
+
+  if (osvResult) {
+    store.pruneStale(osvResult.fullSyncStartedAt, GRACE_PERIOD_MS)
+    store.setLastSyncedAt('osv', Date.now())
+    for (const w of osvResult.warnings) warnings.push(w)
+  }
   for (const w of ghWarnings) {
     warnings.push(w)
     process.stderr.write(`warning: ${w.message}\n`)

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import semver from 'semver'
 import { resolve } from 'node:path'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -54,6 +55,13 @@ export async function run(argv: string[]): Promise<number> {
     }
     const name = pkgArg.slice(0, lastAt)
     const version = pkgArg.slice(lastAt + 1)
+    // An empty or unparseable version makes matchAffected's semver.satisfies() return false
+    // for every advisory, so a vulnerable package would falsely report clean (exit 0) — the
+    // worst failure mode for a security tool. Reject it like a missing argument.
+    if (!semver.valid(version)) {
+      process.stderr.write('Usage: vulnscan check <package@version>\n')
+      return 1
+    }
 
     const config = loadConfig(parsed.dir ?? '.')
     await maybeBootstrap()

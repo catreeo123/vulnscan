@@ -185,6 +185,23 @@ describe('vulnscan check command', () => {
     expect(result.stderr).toMatch(/Usage: vulnscan check <package@version>/)
     expect(result.stderr).not.toMatch(/Unknown command/)
   })
+
+  // A trailing '@' yields an empty version. semver.satisfies('', range) is false, so a
+  // vulnerable package would silently report "No findings" (false-clean exit 0) — the worst
+  // failure mode for a security tool. Reject the malformed version instead.
+  it('exits 1 with usage (not false-clean) for an empty version after @', () => {
+    const result = spawnCli(['check', 'lodash@'], dbPath)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toMatch(/Usage: vulnscan check <package@version>/)
+    expect(result.stdout + result.stderr).not.toMatch(/no findings/i)
+  })
+
+  it('exits 1 with usage (not false-clean) for an unparseable version', () => {
+    const result = spawnCli(['check', 'lodash@not-a-version'], dbPath)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toMatch(/Usage: vulnscan check <package@version>/)
+    expect(result.stdout + result.stderr).not.toMatch(/no findings/i)
+  })
 })
 
 // ── Slice 3b: check command summary line ─────────────────────────────────────
@@ -787,7 +804,7 @@ describe('vulnscan scan — D7 npm alias resolves advisories against target pack
 // ── D5T: --offline flag ───────────────────────────────────────────────────────
 
 describe('vulnscan scan — --offline flag (empty DB, never synced)', () => {
-  it('exits 0 and emits informational warning when DB has never been synced', () => {
+  it('exits 2 (incomplete) and emits an incomplete warning when DB has never been synced', () => {
     const dir = mkdtempSync(join(tmpdir(), 'vulnscan-offline-empty-'))
     const dbp = join(dir, 'offline-empty.sqlite')
     try {
@@ -799,8 +816,10 @@ describe('vulnscan scan — --offline flag (empty DB, never synced)', () => {
       const db = openDb(dbp)
       db.close()
 
+      // A never-synced DB has zero coverage: a clean (exit 0) result here would be a false-clean.
+      // The scan must signal incomplete (exit 2). See offlineStalenessWarnings.
       const result = spawnCli(['scan', dir, '--offline', '--format', 'json'], dbp)
-      expect(result.status).toBe(0)
+      expect(result.status).toBe(2)
       const parsed = JSON.parse(result.stdout)
       expect(parsed.findings).toHaveLength(0)
       expect(Array.isArray(parsed.warnings)).toBe(true)
@@ -812,7 +831,7 @@ describe('vulnscan scan — --offline flag (empty DB, never synced)', () => {
     }
   })
 
-  it('--no-sync alias: exits 0 and emits informational warning when DB has never been synced', () => {
+  it('--no-sync alias: exits 2 (incomplete) and emits an incomplete warning when DB has never been synced', () => {
     const dir = mkdtempSync(join(tmpdir(), 'vulnscan-no-sync-'))
     const dbp = join(dir, 'no-sync.sqlite')
     try {
@@ -825,7 +844,7 @@ describe('vulnscan scan — --offline flag (empty DB, never synced)', () => {
       db.close()
 
       const result = spawnCli(['scan', dir, '--no-sync', '--format', 'json'], dbp)
-      expect(result.status).toBe(0)
+      expect(result.status).toBe(2)
       const parsed = JSON.parse(result.stdout)
       expect(Array.isArray(parsed.warnings)).toBe(true)
       // JSON warnings are serialized as message strings (see renderJson)

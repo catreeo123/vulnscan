@@ -144,15 +144,29 @@ export function upsertAdvisoryFromFullSync(
     INSERT INTO advisories (id, type, package_name, affected_ranges_json, severity, title, url, canonical_id, synced_at, last_seen_in_full_sync, source)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'osv')
     ON CONFLICT (id, package_name) DO UPDATE SET
-      type = excluded.type,
-      affected_ranges_json = excluded.affected_ranges_json,
-      severity = excluded.severity,
+      -- Preserve a GitHub row's malware classification: a GHSA-id malware advisory (type='mal')
+      -- can collide with an OSV mirror that derives type='cve' (no MAL-/CVE alias). Overwriting
+      -- would relabel it 'cve' and drop the malware signal downstream consumers key on.
+      type = CASE WHEN advisories.source = 'github' THEN advisories.type ELSE excluded.type END,
+      -- A CVE-numbered advisory shares its PK (id, package_name) across both feeds (getBestId
+      -- prefers the CVE alias = GitHub's id), so an OSV full sync collides with a GitHub row.
+      -- An OSV full sync must NOT degrade GitHub's curated vulnerability data: the OSV mirror
+      -- frequently lags GitHub (fewer/narrower ranges, lower severity), and overwriting would
+      -- silently drop coverage for versions only GitHub lists (false negative) or lower the
+      -- severity below the fail threshold. GitHub's own incremental sync keeps these rows current.
+      affected_ranges_json = CASE WHEN advisories.source = 'github' THEN advisories.affected_ranges_json ELSE excluded.affected_ranges_json END,
+      severity = CASE WHEN advisories.source = 'github' THEN advisories.severity ELSE excluded.severity END,
       title = excluded.title,
       url = excluded.url,
-      canonical_id = excluded.canonical_id,
+      -- canonical_id is the stable cross-source identifier (GitHub stores the GHSA id). An OSV
+      -- mirror lacking a GHSA alias derives a CVE-id canonical_id; overwriting would make a
+      -- GitHub row's identity sync-order-dependent and break dedup/suppression keyed on the GHSA.
+      canonical_id = CASE WHEN advisories.source = 'github' THEN advisories.canonical_id ELSE excluded.canonical_id END,
       synced_at = excluded.synced_at,
       last_seen_in_full_sync = excluded.last_seen_in_full_sync,
-      source = excluded.source
+      -- Never downgrade a GitHub-Source row to 'osv', or it would be re-exposed to the OSV
+      -- stale-prune once OSV drops it (silent false negative).
+      source = CASE WHEN advisories.source = 'github' THEN 'github' ELSE excluded.source END
   `).run(
     advisory.id,
     advisory.type,

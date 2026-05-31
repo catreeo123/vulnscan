@@ -121,7 +121,10 @@ function ghAdvisoryToAdvisories(
   item: GhAdvisory,
   advisoryType: Advisory['type'],
 ): { advisories: Advisory[]; warnings: ScanWarning[] } {
-  const npmVulns = item.vulnerabilities.filter((v) => v.package.ecosystem === 'npm')
+  // Null-safe: GitHub's schema permits `vulnerabilities: null` and individual entries with a
+  // null `package`. Mirrors the OSV path's `a?.package?.ecosystem` guard — an unguarded access
+  // throws, aborting the whole pass and freezing the cursor (a permanent sync stall).
+  const npmVulns = (item.vulnerabilities ?? []).filter((v) => v?.package?.ecosystem === 'npm')
   if (npmVulns.length === 0) return { advisories: [], warnings: [] }
 
   const id = item.cve_id ?? item.ghsa_id

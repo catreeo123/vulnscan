@@ -283,6 +283,124 @@ describe('B2 — source-aware prune exempts GitHub-Source advisories (#49)', () 
   })
 })
 
+describe('B4 — OSV full-sync must not strip the GitHub source exemption on shared-PK rows (#49)', () => {
+  it('a GitHub advisory also present in an OSV full sync (shared CVE PK) survives prune after OSV drops it', () => {
+    const database = makeDb()
+
+    // GitHub Sync stores a CVE-numbered advisory (source=github → prune-exempt).
+    upsertAdvisory(database, {
+      id: 'CVE-2099-shared',
+      canonicalId: 'GHSA-shared-aaaa-bbbb',
+      type: 'cve',
+      packageName: 'shared-pkg',
+      ranges: [{ rawRange: '< 2.0.0' }],
+      severity: 'high',
+      title: 'present in both feeds',
+      url: 'https://github.com/advisories/GHSA-shared-aaaa-bbbb',
+    })
+
+    // An OSV full Sync includes the same advisory: getBestId() prefers the CVE alias, so the
+    // OSV id equals the GitHub id and the package matches → same PK (id, package_name). Its
+    // last_seen is stamped 30 days ago (the full sync that imported it). Overwriting source to
+    // 'osv' here would re-expose this still-live GitHub advisory to the stale-prune.
+    const osvSyncT = Date.now() - 30 * 24 * 60 * 60 * 1000
+    upsertAdvisoryFromFullSync(database, {
+      id: 'CVE-2099-shared',
+      canonicalId: 'GHSA-shared-aaaa-bbbb',
+      type: 'cve',
+      packageName: 'shared-pkg',
+      ranges: [{ introduced: '0', fixed: '2.0.0' }],
+      severity: 'high',
+      title: 'present in both feeds',
+      url: 'https://github.com/advisories/GHSA-shared-aaaa-bbbb',
+    }, osvSyncT)
+
+    // OSV later drops the advisory; a fresh full-sync prune runs. GitHub still lists it.
+    pruneStaleAdvisories(database, Date.now(), 7 * 24 * 60 * 60 * 1000)
+    expect(getAdvisoriesForPackage(database, 'shared-pkg')).toHaveLength(1)
+  })
+})
+
+describe('B4b — OSV full-sync must not overwrite a GitHub-sourced advisory\'s ranges/severity (#49)', () => {
+  it('preserves the GitHub ranges and severity when a later OSV full sync narrows them on the same PK', () => {
+    const database = makeDb()
+
+    // GitHub stores a CVE with two disjoint ranges and critical severity.
+    upsertAdvisory(database, {
+      id: 'CVE-2099-5678', canonicalId: 'GHSA-rng-aaaa-bbbb', type: 'cve', packageName: 'rng-pkg',
+      ranges: [{ rawRange: '>= 1.0.0, < 2.0.0' }, { rawRange: '>= 3.0.0, < 4.0.0' }],
+      severity: 'critical', title: 't', url: 'https://github.com/advisories/GHSA-rng-aaaa-bbbb',
+    })
+
+    // A later OSV full sync mirrors the same advisory (same PK) but only has the first range and
+    // a lower severity (OSV lag / partial mirror). It must NOT overwrite GitHub's richer data —
+    // doing so would silently drop coverage for version 3.5.0 (false negative) and could lower
+    // the severity below the fail threshold.
+    upsertAdvisoryFromFullSync(database, {
+      id: 'CVE-2099-5678', canonicalId: 'GHSA-rng-aaaa-bbbb', type: 'cve', packageName: 'rng-pkg',
+      ranges: [{ introduced: '1.0.0', fixed: '2.0.0' }],
+      severity: 'moderate', title: 't', url: 'https://osv.dev/vulnerability/CVE-2099-5678',
+    }, Date.now())
+
+    const stored = getAdvisoriesForPackage(database, 'rng-pkg')[0]
+    expect(JSON.stringify(stored.ranges)).toContain('3.0.0') // GitHub's second range survives
+    expect(stored.severity).toBe('critical')                  // GitHub's severity not downgraded
+  })
+})
+
+describe('B4c — OSV full-sync must not flip a GitHub malware advisory\'s type to cve (#49)', () => {
+  it('preserves type=mal when a later OSV full sync collides on the same PK with type=cve', () => {
+    const database = makeDb()
+
+    // GitHub's malware pass stores a GHSA-id malware advisory (type=mal, source=github).
+    upsertAdvisory(database, {
+      id: 'GHSA-mal0-aaaa-bbbb', canonicalId: 'GHSA-mal0-aaaa-bbbb', type: 'mal', packageName: 'evil-pkg',
+      ranges: [{ rawRange: '>= 0' }], severity: 'critical', title: 'malware',
+      url: 'https://github.com/advisories/GHSA-mal0-aaaa-bbbb',
+    })
+
+    // An OSV full sync mirrors the same GHSA id with no MAL-/CVE alias, so it derives type='cve'
+    // and collides on the same PK. An unguarded `type = excluded.type` would relabel the stored
+    // malware advisory as a generic CVE, losing the malware classification downstream consumers
+    // key on (type === 'mal'). Severity is already guarded; type must be too.
+    upsertAdvisoryFromFullSync(database, {
+      id: 'GHSA-mal0-aaaa-bbbb', canonicalId: 'GHSA-mal0-aaaa-bbbb', type: 'cve', packageName: 'evil-pkg',
+      ranges: [{ introduced: '0' }], severity: 'high', title: 'malware',
+      url: 'https://osv.dev/vulnerability/GHSA-mal0-aaaa-bbbb',
+    }, Date.now())
+
+    const stored = getAdvisoriesForPackage(database, 'evil-pkg')[0]
+    expect(stored.type).toBe('mal')          // GitHub's malware classification preserved
+    expect(stored.severity).toBe('critical')
+  })
+})
+
+describe('B4d — OSV full-sync must not overwrite a GitHub row\'s stable GHSA canonical_id (#49)', () => {
+  it('preserves the GitHub canonical_id when a later OSV full sync (no GHSA alias) collides on the same PK', () => {
+    const database = makeDb()
+
+    // GitHub stores a CVE-numbered advisory whose stable cross-source identity is its GHSA id.
+    upsertAdvisory(database, {
+      id: 'CVE-2099-canon', canonicalId: 'GHSA-canon-aaaa-bbbb', type: 'cve', packageName: 'canon-pkg',
+      ranges: [{ rawRange: '< 2.0.0' }], severity: 'high', title: 't',
+      url: 'https://github.com/advisories/GHSA-canon-aaaa-bbbb',
+    })
+
+    // An OSV mirror of the same CVE has no GHSA alias, so it derives canonicalId = the CVE id and
+    // collides on the same PK. An unguarded `canonical_id = excluded.canonical_id` would flip the
+    // stable GHSA identity to the CVE id (sync-order-dependent), breaking the documented invariant
+    // and any downstream dedup/suppression keyed on the GHSA id.
+    upsertAdvisoryFromFullSync(database, {
+      id: 'CVE-2099-canon', canonicalId: 'CVE-2099-canon', type: 'cve', packageName: 'canon-pkg',
+      ranges: [{ introduced: '0', fixed: '2.0.0' }], severity: 'high', title: 't',
+      url: 'https://osv.dev/vulnerability/CVE-2099-canon',
+    }, Date.now())
+
+    const stored = getAdvisoriesForPackage(database, 'canon-pkg')[0]
+    expect(stored.canonicalId).toBe('GHSA-canon-aaaa-bbbb')
+  })
+})
+
 describe('C2 — migration backfills canonical_id', () => {
   it('migration backfills canonical_id from URL for pre-migration rows', () => {
     // Seed a DB with the old schema (no canonical_id column)

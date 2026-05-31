@@ -97,10 +97,15 @@ describe('parseLockfile', () => {
     expect(warnings[0].message).toMatch(/lodash-alias/)
   })
 
-  it('malformed package.json emits a warning and does not crash', () => {
+  it('malformed package.json emits an informational warning (not incomplete) and does not crash', () => {
     const { deps, warnings } = parseLockfile(v2Fixture, 'not valid json {{{')
     expect(deps.length).toBeGreaterThan(0)
-    expect(warnings.some((w) => /package\.json/.test(w.message))).toBe(true)
+    const w = warnings.find((w) => /package\.json/.test(w.message))
+    expect(w).toBeDefined()
+    // package.json feeds ONLY ancestry (the `via` display field); deps come entirely from the
+    // lockfile. So detection coverage is complete — this must be informational (exit 0/1), not
+    // incomplete (exit 2 = data may be missing).
+    expect(w!.class).toBe('informational')
   })
 
   it('returns empty deps and a warning for v1 lockfile (no packages key)', () => {

@@ -54,7 +54,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
         i += 1
       } else {
         const value = argv[i + 1]
-        if (value === undefined) {
+        // A next token that is itself a flag (`--`-prefixed) means the value was omitted.
+        // Without this guard the flag greedily consumes the following flag — silently storing
+        // a flag name as the value AND dropping the consumed flag (e.g. `--format --fail-on x`
+        // → format='--fail-on', --fail-on dropped). Treat it as a missing value instead.
+        if (value === undefined || value.startsWith('--')) {
           process.stderr.write(`Warning: ${arg} flag has no value, ignoring\n`)
           i += 1
           continue

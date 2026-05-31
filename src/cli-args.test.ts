@@ -319,4 +319,22 @@ describe('parseArgs — orphan flag warning (S5)', () => {
       expect.stringContaining('Warning: --fail-on flag has no value'),
     )
   })
+
+  it('does not greedily consume a following flag as a value', () => {
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    // `--format` has no value here; it must NOT swallow the next flag token. Greedy consumption
+    // would set format='--fail-on' (silently wrong) and drop `--fail-on critical` with no warning.
+    const result = parseArgs(['scan', '.', '--format', '--fail-on', 'critical'])
+    expect(result).toMatchObject({ command: 'scan', format: 'table', failOn: 'critical' })
+  })
+
+  it('emits a no-value warning (and still applies the next flag) when a value-flag is followed by a flag', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const result = parseArgs(['scan', '.', '--fail-on', '--offline'])
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Warning: --fail-on flag has no value'),
+    )
+    // --offline must still be honored as a boolean flag, not consumed as --fail-on's value.
+    expect(result).toMatchObject({ command: 'scan', failOn: null, noSync: true })
+  })
 })

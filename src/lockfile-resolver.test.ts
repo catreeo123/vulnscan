@@ -95,6 +95,29 @@ describe('resolveEntry', () => {
     expect(result.warning?.class).toBe('informational')
   })
 
+  it('npm alias with missing version: emits incomplete, not a dep that can never match', () => {
+    // The alias branch fabricated version '0.0.0' when version was absent, producing a
+    // scannable Dep that matchAffected can never satisfy → the aliased package silently
+    // reports clean (exit 0) behind only an informational warning. Surface as incomplete
+    // (exit 2), like the plain-dep empty-version guard.
+    const result = resolveEntry(
+      'node_modules/lodash-alias',
+      { name: 'lodash' } as PackageEntry,
+    )
+    expect(result.dep).toBeUndefined()
+    expect(result.warning?.class).toBe('incomplete')
+    expect(result.warning?.message).toMatch(/lodash-alias/)
+  })
+
+  it('npm alias with empty version string: emits incomplete', () => {
+    const result = resolveEntry(
+      'node_modules/lodash-alias',
+      { name: 'lodash', version: '' } as PackageEntry,
+    )
+    expect(result.dep).toBeUndefined()
+    expect(result.warning?.class).toBe('incomplete')
+  })
+
   // ── git-source dep ──────────────────────────────────────────────────────────
   it('git+: emits no dep, incomplete warning', () => {
     const result = resolveEntry(
@@ -151,5 +174,15 @@ describe('resolveEntry', () => {
     const result = resolveEntry('node_modules/virtual', {} as PackageEntry)
     expect(result.dep).toBeUndefined()
     expect(result.warning).toBeUndefined()
+  })
+
+  // ── Empty version → incomplete (not a silent unmatchable dep) ─────────────────
+  it('entry with an empty version string: emits incomplete, not a dep that can never match', () => {
+    // version "" is not undefined, so the plain-dep branch used to emit { name, version: '' }.
+    // matchAffected('', range) is always false → a vulnerable package silently reports clean
+    // (exit 0). An un-checkable version must surface as incomplete (exit 2) instead.
+    const result = resolveEntry('node_modules/foo', { version: '' } as PackageEntry)
+    expect(result.dep).toBeUndefined()
+    expect(result.warning?.class).toBe('incomplete')
   })
 })

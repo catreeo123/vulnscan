@@ -1,7 +1,7 @@
 import type { Finding, AdvisoryStore } from './types.js'
 import type { Config } from './config.js'
 import type { ScanWarning } from './warnings.js'
-import { informational } from './warnings.js'
+import { informational, incomplete } from './warnings.js'
 import { parseLockfile } from './lockfile-parser.js'
 import { matchAffected } from './affected-range-matcher.js'
 import { deduplicate } from './deduplicator.js'
@@ -44,23 +44,28 @@ export type ScanResult = {
 
 function offlineStalenessWarnings(store: AdvisoryStore): ScanWarning[] {
   const now = Date.now()
-  const osvLast = store.getLastSyncedAt('osv')
-  const ghLast = store.getLastSyncedAt('github')
   const warnings: ScanWarning[] = []
-  if (osvLast === null || now - osvLast > SEVEN_DAYS_MS) {
-    warnings.push(
-      informational(
-        `Advisory database may be stale: OSV data ${osvLast === null ? 'has never been synced' : `was last synced ${Math.floor((now - osvLast) / (24 * 60 * 60 * 1000))} day(s) ago`}. Run \`vulnscan update\` to refresh.`,
-      ),
-    )
+  // A source that has never been synced means zero coverage for it: an offline scan against
+  // an empty database would otherwise report clean (exit 0) — a false-clean. That is
+  // `incomplete` (exit 2). Present-but-aged data is only `informational`.
+  const checkSource = (source: 'osv' | 'github', label: string): void => {
+    const last = store.getLastSyncedAt(source)
+    if (last === null) {
+      warnings.push(
+        incomplete(
+          `Advisory database ${label} data has never been synced; results are unreliable (no coverage). Run \`vulnscan update\` to populate it.`,
+        ),
+      )
+    } else if (now - last > SEVEN_DAYS_MS) {
+      warnings.push(
+        informational(
+          `Advisory database may be stale: ${label} data was last synced ${Math.floor((now - last) / (24 * 60 * 60 * 1000))} day(s) ago. Run \`vulnscan update\` to refresh.`,
+        ),
+      )
+    }
   }
-  if (ghLast === null || now - ghLast > SEVEN_DAYS_MS) {
-    warnings.push(
-      informational(
-        `Advisory database may be stale: GitHub Advisory data ${ghLast === null ? 'has never been synced' : `was last synced ${Math.floor((now - ghLast) / (24 * 60 * 60 * 1000))} day(s) ago`}. Run \`vulnscan update\` to refresh.`,
-      ),
-    )
-  }
+  checkSource('osv', 'OSV')
+  checkSource('github', 'GitHub Advisory')
   return warnings
 }
 

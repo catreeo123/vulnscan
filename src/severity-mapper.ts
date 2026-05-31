@@ -16,7 +16,11 @@ export function resolveAdvisorySeverity(
   advisoryId: string,
 ): { severity: Severity; warning?: ScanWarning } {
   const { severity, warning } = mapSeverity({ label, advisoryId })
-  return { severity: type === 'mal' ? 'critical' : severity, warning }
+  // Malware is forced to critical regardless of label. The label-default warning ("unknown
+  // severity, defaulting to 'high'") would then be factually wrong (the stored severity is
+  // critical, not high), so suppress it for mal advisories.
+  if (type === 'mal') return { severity: 'critical' }
+  return { severity, warning }
 }
 
 export function mapSeverity(input: {

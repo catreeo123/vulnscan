@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Advisory, AdvisoryStore, SemverRange, Severity } from './types.js'
 import { resolveAdvisorySeverity } from './severity-mapper.js'
-import { informational } from './warnings.js'
+import { incomplete, informational } from './warnings.js'
 import type { ScanWarning } from './warnings.js'
 
 const OSV_NPM_URL = 'https://osv-vulnerabilities.storage.googleapis.com/npm/all.zip'
@@ -87,6 +87,7 @@ export async function syncOsv(
       if (onProgress && imported % 500 === 0) onProgress({ parsed: imported, total })
     }
 
+    let upsertFailures = 0
     for (const a of allAdvisories) {
       try {
         store.upsertFromFullSync(a, fullSyncStartedAt)
@@ -94,12 +95,22 @@ export async function syncOsv(
         // Per-row recovery: a single bad advisory must not abort the entire sync.
         skipped++
         imported--
+        upsertFailures++
         process.stderr.write(`Warning: skipping advisory ${a.id}: ${(err as Error).message}\n`)
       }
     }
 
     process.stderr.write(`OSV: imported ${imported} advisories (${skipped} skipped)\n`)
     const warnings: ScanWarning[] = []
+    if (upsertFailures > 0) {
+      // A DB-write failure (not a parse skip) means advisories did not persist. The local DB
+      // is now partially populated, so a scan against it could miss real findings — surface
+      // this as `incomplete` (exit 2) rather than letting the scan report a false clean.
+      const noun = upsertFailures === 1 ? 'advisory' : 'advisories'
+      warnings.push(
+        incomplete(`OSV sync: ${upsertFailures} ${noun} failed to persist to the local database; results may be incomplete`),
+      )
+    }
     if (missingSeverityCount > 0) {
       const noun = missingSeverityCount === 1 ? 'advisory has' : 'advisories have'
       warnings.push(
@@ -115,14 +126,23 @@ export async function syncOsv(
 }
 
 export function osvEntryToAdvisories(entry: OsvEntry): { advisories: Advisory[]; warnings: ScanWarning[] } {
+  // Null-safe: OSV is untrusted external data, and an affected[] block missing its package
+  // field must be skipped, not throw. A throw here propagates out of the unguarded
+  // syncOsv parse loop and aborts the entire sync over a single malformed entry.
   const allAffected = entry.affected?.filter(
-    (a) => a.package.ecosystem === 'npm' && a.package.name,
+    (a) => a?.package?.ecosystem === 'npm' && a.package?.name,
   ) ?? []
 
   if (allAffected.length === 0) return { advisories: [], warnings: [] }
 
   const id = getBestId(entry)
-  const type: 'cve' | 'mal' = id.startsWith('MAL-') ? 'mal' : 'cve'
+  // Malware classification is independent of the display id. getBestId prefers a CVE alias
+  // for the id, but a malicious package that also carries a CVE is still malware — deriving
+  // `type` from the display id yields 'cve' and bypasses the mal→critical override in
+  // resolveAdvisorySeverity, storing the package at its (often under-rated) OSV severity.
+  const isMalware =
+    entry.id.startsWith('MAL-') || (entry.aliases?.some((a) => a.startsWith('MAL-')) ?? false)
+  const type: 'cve' | 'mal' = isMalware ? 'mal' : 'cve'
 
   const url = `https://osv.dev/vulnerability/${entry.id}`
   const ghsaMatch = entry.id.match(/^GHSA-/i) ? entry.id : entry.aliases?.find((a) => a.match(/^GHSA-/i))
@@ -206,7 +226,11 @@ export function eventsToRanges(events: OsvEvent[]): SemverRange[] {
     if (event.introduced !== undefined) {
       if (current) ranges.push(current)
       current = { introduced: event.introduced }
-    } else if (event.fixed !== undefined && current) {
+    } else if (event.fixed !== undefined) {
+      // A `fixed` with no preceding `introduced` means "all versions before fixed are
+      // vulnerable" — synthesize introduced:'0', mirroring the last_affected case below.
+      // The old `&& current` guard silently dropped it, losing the whole advisory.
+      if (current === null) current = { introduced: '0' }
       current.fixed = event.fixed
       ranges.push(current)
       current = null

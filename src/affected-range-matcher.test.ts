@@ -149,6 +149,23 @@ describe('matchAffected', () => {
     expect(findings).toHaveLength(0)
   })
 
+  it('treats empty-string introduced as "0" — must not silently miss the advisory', () => {
+    // An empty-string `introduced` is not null/undefined, so `?? '0'` lets it through and
+    // buildSemverRange produces ">= <2.0.0" (invalid). semver.satisfies silently returns
+    // false for an invalid range → the vulnerable package is never flagged (false negative).
+    const advisory: Advisory = {
+      id: 'CVE-EMPTY-INTRO',
+      canonicalId: 'CVE-EMPTY-INTRO',
+      type: 'cve',
+      packageName: 'ei-pkg',
+      ranges: [{ introduced: '', fixed: '2.0.0' }],
+      severity: 'high',
+      title: 'empty introduced',
+      url: 'https://example.com',
+    }
+    expect(matchAffected({ name: 'ei-pkg', version: '1.0.0' }, [advisory])).toHaveLength(1)
+  })
+
   it('lastAffected caps the upper bound: matches versions <=lastAffected', () => {
     const advisory: Advisory = {
       id: 'CVE-LA-1',

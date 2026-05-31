@@ -1,6 +1,6 @@
 import type { Dep } from './types.js'
 import { buildAncestryMap } from './ancestry.js'
-import { incomplete } from './warnings.js'
+import { incomplete, informational } from './warnings.js'
 import type { ScanWarning } from './warnings.js'
 import { resolveEntry } from './lockfile-resolver.js'
 import type { PackageEntry } from './lockfile-resolver.js'
@@ -29,7 +29,10 @@ export function parseLockfile(
     try {
       packageJson = JSON.parse(packageJsonContent) as Record<string, unknown>
     } catch {
-      warnings.push(incomplete('package.json parse failed — ancestry tracking disabled'))
+      // package.json feeds only buildAncestryMap (the `via` display field). The dep set comes
+      // entirely from package-lock.json, so detection coverage is unaffected — this is
+      // informational (exit 0/1), not incomplete (exit 2, which signals possibly-missed packages).
+      warnings.push(informational('package.json parse failed — ancestry tracking disabled'))
     }
   }
 

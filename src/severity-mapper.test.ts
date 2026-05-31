@@ -84,6 +84,14 @@ describe('resolveAdvisorySeverity — malware override', () => {
     expect(result.severity).toBe('critical')
   })
 
+  it('does not emit a misleading "defaulting to high" warning for a mal advisory with no label', () => {
+    // The mal rule sets severity to critical, so the label-default warning (which says the
+    // advisory was treated as 'high') would be factually wrong. It must be suppressed.
+    const result = resolveAdvisorySeverity('mal', undefined, 'MAL-0003-0003')
+    expect(result.severity).toBe('critical')
+    expect(result.warning).toBeUndefined()
+  })
+
   it('passes a cve advisory severity through unchanged', () => {
     const result = resolveAdvisorySeverity('cve', 'moderate', 'CVE-2024-0001')
     expect(result.severity).toBe('moderate')

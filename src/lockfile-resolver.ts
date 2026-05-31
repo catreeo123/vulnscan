@@ -76,9 +76,19 @@ export function resolveEntry(
     const parts = path.split('node_modules/')
     const aliasKey = parts[parts.length - 1]
     if (pkg.name !== aliasKey) {
-      const version = pkg.version ?? '0.0.0'
+      // A missing/empty version can't be range-checked. Fabricating '0.0.0' (or keeping '')
+      // would make the aliased package match no advisory and silently report clean (false
+      // negative) behind only an informational warning. Surface as incomplete (exit 2),
+      // mirroring the plain-dep empty-version guard below.
+      if (pkg.version === undefined || pkg.version.trim() === '') {
+        return {
+          warning: incomplete(
+            `${aliasKey}: npm alias to '${pkg.name}' has no resolvable version (cannot check version range)`,
+          ),
+        }
+      }
       return {
-        dep: { name: pkg.name, version, via: aliasKey },
+        dep: { name: pkg.name, version: pkg.version, via: aliasKey },
         warning: informational(
           `${aliasKey}: npm alias to '${pkg.name}' — advisories checked against target package`,
         ),
@@ -90,6 +100,12 @@ export function resolveEntry(
   if (isUnderNodeModules && pkg.version !== undefined) {
     const parts = path.split('node_modules/')
     const name = parts[parts.length - 1]
+    // An empty/whitespace version is not undefined, so it would otherwise become a Dep with
+    // version '' — which matchAffected can never satisfy, silently reporting a vulnerable
+    // package as clean (exit 0). Surface it as incomplete (exit 2) instead, like a git dep.
+    if (pkg.version.trim() === '') {
+      return { warning: incomplete(`${name}: lockfile entry has an empty version (cannot check version range)`) }
+    }
     return { dep: { name, version: pkg.version } }
   }
 

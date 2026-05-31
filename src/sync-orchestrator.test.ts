@@ -133,6 +133,36 @@ describe('D8: clock-skew guard', () => {
   })
 })
 
+// ─── OSV sync failure degrades gracefully (parity with syncGithubSafe) ───────
+
+describe('OSV sync failure → incomplete warning (no crash)', () => {
+  it('syncIfStale: syncOsv rejection yields an incomplete warning, does not throw, and does not advance the OSV cursor or prune', async () => {
+    const { syncOsv } = await import('./osv-sync.js')
+    vi.mocked(syncOsv).mockRejectedValueOnce(new Error('OSV download failed: 503 Service Unavailable'))
+    const store = makeStore()
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+
+    const warnings = await syncIfStale(store)
+
+    expect(warnings.some((w) => w.class === 'incomplete')).toBe(true)
+    // Cannot prune or advance the cursor on a failed full Sync — would drop live Advisories.
+    expect(vi.mocked(store.pruneStale)).not.toHaveBeenCalled()
+    expect(vi.mocked(store.setLastSyncedAt)).not.toHaveBeenCalledWith('osv', expect.any(Number))
+  })
+
+  it('syncIfStale: scrubs secrets from the OSV failure warning', async () => {
+    const { syncOsv } = await import('./osv-sync.js')
+    vi.mocked(syncOsv).mockRejectedValueOnce(new Error('failed with token=ghp_abcdefghijklmnopqrstuvwxyz123456'))
+    const store = makeStore()
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+
+    const warnings = await syncIfStale(store)
+    const inc = warnings.find((w) => w.class === 'incomplete')
+    expect(inc).toBeDefined()
+    expect(inc!.message).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz123456')
+  })
+})
+
 // ─── D9: syncGithubSafe emits incomplete warning on error ────────────────────
 
 describe('D9: syncGithubSafe error → incomplete warning', () => {
@@ -208,6 +238,30 @@ describe('D10: runSync surfaces page-limit warnings to stderr', () => {
     ;(process.stderr as any).write = origWrite
 
     expect(warnings.some((w) => w.class === 'incomplete')).toBe(true)
+  })
+})
+
+// ─── runSync: OSV failure degrades to incomplete (exit 2), not a throw (exit 1) ──
+
+describe('runSync: OSV sync failure degrades to an incomplete warning', () => {
+  it('returns an incomplete warning (does not throw) and does not prune/advance the OSV cursor when syncOsv rejects', async () => {
+    const { syncOsv } = await import('./osv-sync.js')
+    const { runSync } = await import('./sync-orchestrator.js')
+    vi.mocked(syncOsv).mockRejectedValueOnce(new Error('OSV download failed: 503 Service Unavailable'))
+
+    const origWrite = process.stderr.write.bind(process.stderr)
+    ;(process.stderr as any).write = () => true
+    const store = makeStore()
+    // A throw here would propagate to the CLI's top-level catch → exit 1 ("findings"); an OSV
+    // sync failure during `vulnscan update` is an incomplete sync and must map to exit 2.
+    const warnings = await runSync(store)
+    ;(process.stderr as any).write = origWrite
+
+    expect(warnings.some((w) => w.class === 'incomplete')).toBe(true)
+    // A failed full pull must not prune (would delete live advisories against partial data) or
+    // advance the OSV cursor (would mask the failed sync as a fresh successful one).
+    expect(vi.mocked(store.pruneStale)).not.toHaveBeenCalled()
+    expect(vi.mocked(store.setLastSyncedAt)).not.toHaveBeenCalledWith('osv', expect.any(Number))
   })
 })
 

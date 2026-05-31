@@ -80,10 +80,12 @@ describe('D5T: noSync flag skips syncIfStale', () => {
     expect(syncStub).not.toHaveBeenCalled()
   })
 
-  it('runScan with noSync=true emits informational warning when cursors are null (never synced)', async () => {
-    // InMemoryAdvisoryStore returns null for getLastSyncedAt by default
+  it('runScan with noSync=true emits INCOMPLETE warning when cursors are null (never synced)', async () => {
+    // A never-synced DB has zero advisory coverage. Reporting that as merely "informational"
+    // lets computeExitCode return 0 (clean) for a scan that checked nothing — a false-clean.
+    // never-synced must be `incomplete` (exit 2); only present-but-aged data is informational.
     const result = await runScan({ lockfileContent: emptyLockfile, store, config: baseConfig, noSync: true })
-    expect(result.warnings.some((w) => w.class === 'informational')).toBe(true)
+    expect(result.warnings.some((w) => w.class === 'incomplete')).toBe(true)
     expect(result.warnings.some((w) => w.message.includes('never been synced'))).toBe(true)
   })
 
@@ -103,10 +105,10 @@ describe('D5T: noSync flag skips syncIfStale', () => {
   })
 
   it('checkPackage with noSync=true includes warnings in result', async () => {
-    // Cursors null → should warn
+    // Cursors null (never synced) → zero coverage → incomplete (not merely informational)
     const result = await checkPackage({ name: 'lodash', version: '4.17.20', store, config: baseConfig, noSync: true })
     expect(result.warnings).toBeDefined()
-    expect(result.warnings.some((w) => w.class === 'informational')).toBe(true)
+    expect(result.warnings.some((w) => w.class === 'incomplete')).toBe(true)
   })
 })
 
