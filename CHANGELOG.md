@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.2.26] — 2026-05-31
+
+### Refactors
+
+- **Failure-threshold / exit-code policy extracted from `cli.ts` into `core/failure-threshold.ts` (#51)** — the exit-code matrix (`computeExitCode`, the `2 > 1 > 0` precedence), the severity-floor comparison (`shouldFail`, `SEVERITY_ORDER`), and fail-on resolution were tangled into `cli.ts` alongside arg dispatch and IO. They now live in a pure module exposing `computeExitCode(findings, warnings, failOn)` and `resolveFailOn(failOnArg, config)`; `cli.ts` keeps only dispatch + IO. `resolveFailOn` takes the **already-loaded** `Config`, eliminating the second `loadConfig()` per scan/check that the old `getFailOn(arg, dir)` incurred. The exit-code tests moved with the logic into `core/failure-threshold.test.ts` (now tested through the module's interface rather than only end-to-end via `run()`), plus new `resolveFailOn` coverage. No change to CLI behavior or exit codes.
+
+## [0.2.25] — 2026-05-31
+
+### Refactors
+
+- **Advisory coalescing extracted into a shared `advisory-assembler` seam (#50)** — the "one `Advisory` per `(id, packageName)`, ranges unioned, most-severe severity wins" invariant added by #48 lived in duplicate inside both `osvEntryToAdvisories` and `ghAdvisoryToAdvisories`, so the silent-false-negative class of bug could re-open in either copy. Both Source adapters now build a list of per-package `PackageContribution`s and hand them to `assembleAdvisories(identity, contributions)` in `src/sync/advisory-assembler.ts`; the adapters shrink to wire-format translation. The merge invariant now has one home and one test surface (`advisory-assembler.test.ts`, 5 cases including "no range is lost"). No change to stored advisories or to any `AdvisoryStore` caller.
+
+## [0.2.24] — 2026-05-31
+
+### Refactors
+
+- **`src/` reorganized into domain subfolders** — the 22 modules (and their co-located tests) moved from a flat `src/` into `cli/`, `sync/`, `store/`, `lockfile/`, `match/`, `output/`, and `core/`. All relative imports were rewritten accordingly; no runtime behavior changed. Layout-sensitive paths were updated to match: `bin`/`postbuild` now point at `dist/cli/cli.js`, the `--version` `require` and the skill-installer `DEFAULT_SOURCE` resolve `../../` from `cli/`, and the E2E harness's `PROJECT_ROOT` walks two levels up. Build clean, all 377 tests green.
+
+## [0.2.23] — 2026-05-31
+
+### Chores
+
+- **Repo hygiene** — `*.tgz` (npm-pack artifacts) and `coverage/` are now git-ignored, and the eight stray `catreeo123-vulnscan-*.tgz` packs plus the `coverage/` directory were removed from the working tree.
+- **Docs consolidation** — legacy planning documents moved under `docs/archive/` (`PRD.md`, `PRD-phase2.md`, `prd-review-fixes.md`, and the pre-GitHub-Issues `issues/` specs) with an `archive/README.md` explaining their status. Maintained docs (`adr/`, `agents/`, `ARCHITECTURE.md`, `output-schema.md`) stay at `docs/`.
+
 ## [0.2.22] — 2026-05-31
 
 ### Fixes
