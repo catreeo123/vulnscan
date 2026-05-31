@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.26] — 2026-05-31
+
+### Refactors
+
+- **Failure-threshold / exit-code policy extracted from `cli.ts` into `core/failure-threshold.ts` (#51)** — the exit-code matrix (`computeExitCode`, the `2 > 1 > 0` precedence), the severity-floor comparison (`shouldFail`, `SEVERITY_ORDER`), and fail-on resolution were tangled into `cli.ts` alongside arg dispatch and IO. They now live in a pure module exposing `computeExitCode(findings, warnings, failOn)` and `resolveFailOn(failOnArg, config)`; `cli.ts` keeps only dispatch + IO. `resolveFailOn` takes the **already-loaded** `Config`, eliminating the second `loadConfig()` per scan/check that the old `getFailOn(arg, dir)` incurred. The exit-code tests moved with the logic into `core/failure-threshold.test.ts` (now tested through the module's interface rather than only end-to-end via `run()`), plus new `resolveFailOn` coverage. No change to CLI behavior or exit codes.
+
 ## [0.2.25] — 2026-05-31
 
 ### Refactors
