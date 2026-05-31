@@ -1,5 +1,7 @@
 node_modules/
 dist/
+coverage/
+*.tgz
 graphify-out/manifest.json
 graphify-out/cost.json
 graphify-out/cache/

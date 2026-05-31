@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.23] — 2026-05-31
+
+### Chores
+
+- **Repo hygiene** — `*.tgz` (npm-pack artifacts) and `coverage/` are now git-ignored, and the eight stray `catreeo123-vulnscan-*.tgz` packs plus the `coverage/` directory were removed from the working tree.
+- **Docs consolidation** — legacy planning documents moved under `docs/archive/` (`PRD.md`, `PRD-phase2.md`, `prd-review-fixes.md`, and the pre-GitHub-Issues `issues/` specs) with an `archive/README.md` explaining their status. Maintained docs (`adr/`, `agents/`, `ARCHITECTURE.md`, `output-schema.md`) stay at `docs/`.
+
 ## [0.2.22] — 2026-05-31
 
 ### Fixes
