@@ -265,6 +265,32 @@ describe('runSync: OSV sync failure degrades to an incomplete warning', () => {
   })
 })
 
+// ─── #52: canonical prune order — after GitHub sync completes, in both entry points ──
+
+describe('#52: OSV pruneStale runs after the GitHub sync completes', () => {
+  it('syncIfStale: pruneStale is called after syncGithubAdvisories, not before', async () => {
+    const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+    const store = makeStore()
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+    await syncIfStale(store)
+
+    const pruneOrder = vi.mocked(store.pruneStale).mock.invocationCallOrder[0]
+    const ghSyncOrder = vi.mocked(syncGithubAdvisories).mock.invocationCallOrder[0]
+    expect(pruneOrder).toBeGreaterThan(ghSyncOrder)
+  })
+
+  it('runSync: pruneStale is called after syncGithubAdvisories, not before', async () => {
+    const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+    const store = makeStore()
+    const { runSync } = await import('./sync-orchestrator.js')
+    await runSync(store)
+
+    const pruneOrder = vi.mocked(store.pruneStale).mock.invocationCallOrder[0]
+    const ghSyncOrder = vi.mocked(syncGithubAdvisories).mock.invocationCallOrder[0]
+    expect(pruneOrder).toBeGreaterThan(ghSyncOrder)
+  })
+})
+
 // ─── #24: push(...big) RangeError regression tests ───────────────────────────
 
 describe('#24: loop-push — huge OSV warning array does not overflow stack', () => {

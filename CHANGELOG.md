@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.3] — 2026-07-04
+
+### Refactors
+
+- **`syncIfStale` and `runSync` no longer duplicate the OSV fetch/prune/cursor-advance logic, and now agree on prune ordering (#52)** — both entry points independently implemented the same try/catch-degrade-to-incomplete shape around `syncOsv`, and disagreed on when the local-DB side effects (prune + cursor advance) ran relative to the GitHub sync: `syncIfStale` pruned *before* GitHub sync, `runSync` pruned *after*. Extracted into shared `syncOsvSafe` (fetch + failure handling) and `finalizeOsvSync` (prune + cursor advance) helpers; both entry points now prune after the GitHub sync completes, matching `runSync`'s existing order. No correctness change — GitHub-sourced advisories are already exempt from pruning regardless of ordering — but the two entry points can no longer silently diverge. 406/406 tests green, including new prune-ordering assertions for both `syncIfStale` and `runSync`.
+
 ## [0.3.2] — 2026-07-04
 
 ### Refactors

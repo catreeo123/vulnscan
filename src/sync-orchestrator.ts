@@ -43,31 +43,22 @@ export async function syncIfStale(
 
   if (!osvStillStale && !ghStillStale) return warnings
 
+  // Canonical order (#52): OSV is fetched (network) before pruning/advancing its cursor, but
+  // the prune/cursor-advance itself happens AFTER the GitHub sync completes below — GitHub rows
+  // are never prunable (source='github' is exempt), so this ordering has no correctness effect,
+  // but keeping one canonical order (matching runSync's shape) avoids the two entry points
+  // silently diverging on when a full-sync's local-DB side effects land.
+  let osvResult: Awaited<ReturnType<typeof syncOsv>> | null = null
   if (osvStillStale) {
-    // OSV download is untrusted external infra; a transient HTTP/network failure must degrade
-    // to an `incomplete` warning (exit 2) — letting the Scan proceed against existing Local DB
-    // data — not crash out with exit 1 (which signals "findings"). Mirrors syncGithubSafe.
-    // Only the network Sync is guarded: a pruneStale/cursor failure is a local invariant and
-    // must still propagate (and must not advance the OSV cursor — see orchestrator tests).
-    let osvResult: Awaited<ReturnType<typeof syncOsv>> | null = null
-    try {
-      osvResult = await syncOsv(store)
-    } catch (err) {
-      const scrubbed = scrubSecrets((err as Error).message)
-      process.stderr.write(`OSV: sync failed (${scrubbed}) — proceeding with existing local data\n`)
-      warnings.push(incomplete(`OSV sync failed: ${scrubbed}`))
-    }
-    if (osvResult) {
-      const { fullSyncStartedAt, warnings: osvWarnings } = osvResult
-      for (const w of osvWarnings) warnings.push(w)
-      store.pruneStale(fullSyncStartedAt, GRACE_PERIOD_MS)
-      store.setLastSyncedAt('osv', Date.now())
-    }
+    const osvSync = await syncOsvSafe(store)
+    osvResult = osvSync.osvResult
+    for (const w of osvSync.warnings) warnings.push(w)
   }
   if (ghStillStale) {
     const ghWarnings = await syncGithubSafe(store)
     for (const w of ghWarnings) warnings.push(w)
   }
+  for (const w of finalizeOsvSync(store, osvResult)) warnings.push(w)
   return warnings
 }
 
@@ -79,12 +70,27 @@ export async function runSync(store: AdvisoryStore): Promise<ScanWarning[]> {
   // Build with push-loops, not spread — the warning arrays can be huge (issue #24).
   const warnings: ScanWarning[] = []
 
-  // OSV bulk download is untrusted external infra: a transient network/HTTP failure must
-  // degrade to an `incomplete` warning (exit 2 — data may be missing) instead of propagating
-  // as an unhandled throw, which the CLI's top-level catch maps to exit 1 ("findings"). This
-  // mirrors syncIfStale and the GitHub path (syncGithubSafe is already guarded). A successful
-  // pull is required before pruning/advancing the OSV cursor — a failed sync must not delete
-  // live advisories against partial data, nor mask itself as a fresh successful sync.
+  const { osvResult, warnings: osvSyncWarnings } = await syncOsvSafe(store)
+  for (const w of osvSyncWarnings) warnings.push(w)
+
+  const ghWarnings = await syncGithubSafe(store)
+
+  for (const w of finalizeOsvSync(store, osvResult)) warnings.push(w)
+  for (const w of ghWarnings) {
+    warnings.push(w)
+    process.stderr.write(`warning: ${w.message}\n`)
+  }
+  return warnings
+}
+
+// OSV bulk download is untrusted external infra: a transient network/HTTP failure must degrade
+// to an `incomplete` warning (exit 2 — data may be missing) instead of propagating as an
+// unhandled throw, which the CLI's top-level catch maps to exit 1 ("findings"). Shared by both
+// entry points so the failure-handling shape can't drift between them (#52).
+async function syncOsvSafe(
+  store: AdvisoryStore,
+): Promise<{ osvResult: Awaited<ReturnType<typeof syncOsv>> | null; warnings: ScanWarning[] }> {
+  const warnings: ScanWarning[] = []
   let osvResult: Awaited<ReturnType<typeof syncOsv>> | null = null
   try {
     osvResult = await syncOsv(store)
@@ -93,19 +99,21 @@ export async function runSync(store: AdvisoryStore): Promise<ScanWarning[]> {
     process.stderr.write(`OSV: sync failed (${scrubbed}) — proceeding with existing local data\n`)
     warnings.push(incomplete(`OSV sync failed: ${scrubbed}`))
   }
+  return { osvResult, warnings }
+}
 
-  const ghWarnings = await syncGithubSafe(store)
-
-  if (osvResult) {
-    store.pruneStale(osvResult.fullSyncStartedAt, GRACE_PERIOD_MS)
-    store.setLastSyncedAt('osv', Date.now())
-    for (const w of osvResult.warnings) warnings.push(w)
-  }
-  for (const w of ghWarnings) {
-    warnings.push(w)
-    process.stderr.write(`warning: ${w.message}\n`)
-  }
-  return warnings
+// Only the network sync is guarded above: a pruneStale/cursor failure here is a local invariant
+// and must still propagate (and must not advance the OSV cursor — see orchestrator tests). A
+// successful pull is required before pruning/advancing the cursor — a failed sync must not
+// delete live advisories against partial data, nor mask itself as a fresh successful sync.
+function finalizeOsvSync(
+  store: AdvisoryStore,
+  osvResult: Awaited<ReturnType<typeof syncOsv>> | null,
+): ScanWarning[] {
+  if (!osvResult) return []
+  store.pruneStale(osvResult.fullSyncStartedAt, GRACE_PERIOD_MS)
+  store.setLastSyncedAt('osv', Date.now())
+  return osvResult.warnings
 }
 
 async function syncGithubSafe(store: AdvisoryStore): Promise<ScanWarning[]> {
