@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.28] — 2026-07-04
+
+### Fixes
+
+- **CI/release `npm test` no longer runs the e2e GitHub Advisory sync unauthenticated** — the e2e suite performs a real GitHub advisory sync; without a `GITHUB_TOKEN`, unauth quota (60 req/hr per IP) can already be exhausted by other traffic on a shared runner IP pool, failing the test in a way indistinguishable from a code defect (observed live 2026-07-03). `ci.yml`'s `test` job and `release.yml`'s test step now pass `secrets.GITHUB_TOKEN` as env, matching the already-authenticated sync step later in `release.yml`. (#57)
+
 ## [0.2.27] — 2026-07-04
 
 ### Fixes
