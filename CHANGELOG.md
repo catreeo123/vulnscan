@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.27] — 2026-07-04
+
+### Fixes
+
+- **`InMemoryAdvisoryStore.pruneStale` no longer deletes a row a GitHub upsert has since re-touched** — `pruneStaleAdvisories` (SQLite) only deletes `source='osv'` rows; a later GitHub `upsertAdvisory` stamps `source='github'`, permanently exempting the row from pruning. `InMemoryAdvisoryStore` had no source concept — it tracked only a `fullSyncTimestamps` entry from the original OSV full sync, so a stale timestamp could prune a row that a subsequent plain `upsert()` (the GitHub-only code path) had already updated, diverging from SQLite's behavior. `upsert()` now clears any `fullSyncTimestamps` entry for the key, mirroring the source-flip exemption. (#45)
+
 ## [0.2.26] — 2026-07-04
 
 ### Fixes

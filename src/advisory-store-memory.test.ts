@@ -77,6 +77,21 @@ describe('InMemoryAdvisoryStore', () => {
     expect(store.getForPackage('lodash')).toEqual([advisory])
   })
 
+  it('pruneStale does not delete an advisory re-touched by a plain upsert after a full sync (#45)', () => {
+    // SQLite's pruneStaleAdvisories only deletes source='osv' rows; a later GitHub upsert()
+    // flips a row's source to 'github', exempting it permanently. upsert() is only ever called
+    // for GitHub-sourced advisories (upsertFromFullSync for OSV) — the in-memory store must
+    // mirror that exemption instead of pruning purely on a stale fullSyncTimestamps entry.
+    const t0 = 1000
+    store.upsertFromFullSync(advisory, t0)
+    store.upsert({ ...advisory, severity: 'critical' })
+    // fullSyncStartedAt=2000, gracePeriod=0 → cutoff=2000 → t0=1000 would be "stale" by
+    // timestamp alone, but the row is no longer OSV-tracked, so it must survive.
+    store.pruneStale(2000, 0)
+    expect(store.getForPackage('lodash')).toHaveLength(1)
+    expect(store.getForPackage('lodash')[0].severity).toBe('critical')
+  })
+
   it('close is a no-op (does not throw)', () => {
     expect(() => store.close()).not.toThrow()
   })

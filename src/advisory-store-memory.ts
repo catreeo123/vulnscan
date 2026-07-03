@@ -15,7 +15,13 @@ export class InMemoryAdvisoryStore implements AdvisoryStore {
   }
 
   upsert(advisory: Advisory): void {
-    this.advisories.set(`${advisory.id}:${advisory.packageName}`, advisory)
+    const key = `${advisory.id}:${advisory.packageName}`
+    this.advisories.set(key, advisory)
+    // upsert() is only ever called for GitHub-sourced advisories (upsertFromFullSync is the OSV
+    // path). Mirrors SQLite's upsertAdvisory stamping source='github' on the row, which permanently
+    // exempts it from pruneStaleAdvisories's 'osv'-only filter — a stale fullSyncTimestamps entry
+    // from an earlier OSV full sync must not survive to prune a row GitHub has since re-touched.
+    this.fullSyncTimestamps.delete(key)
   }
 
   upsertFromFullSync(advisory: Advisory, fullSyncStartedAt: number): void {
