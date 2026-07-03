@@ -60,10 +60,17 @@ export function resolveEntry(
   }
 
   // npm workspace: entry has link:true, OR path matches a root workspace glob
-  const isWorkspaceByLink = pkg.link === true
+  // A lockfile-only tamper can hide a real registry dep by adding link:true to its
+  // node_modules/<pkg> entry (which keeps its version + resolved tarball), making the scanner treat
+  // it as a first-party workspace symlink and skip it (silent false-clean). Genuine npm symlink
+  // entries under node_modules carry no version, so reject link:true there when a version is
+  // present. link:true outside node_modules can't hide a scannable dep, so it stays honored.
+  const isWorkspaceByLink = pkg.link === true && !(isUnderNodeModules && pkg.version !== undefined)
   const isWorkspaceByGlob =
     !isUnderNodeModules &&
-    rootWorkspaces.some((glob) => matchesGlob(glob, path))
+    // typeof guard: rootWorkspaces is typed string[] but comes from untrusted lockfile JSON; a
+    // non-string element (e.g. "workspaces": [123]) would throw a TypeError in matchesGlob().split().
+    rootWorkspaces.some((glob) => typeof glob === 'string' && matchesGlob(glob, path))
 
   if (isWorkspaceByLink || isWorkspaceByGlob) {
     const name = pkg.name ?? path.split('/').pop() ?? path

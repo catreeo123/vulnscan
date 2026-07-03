@@ -185,4 +185,44 @@ describe('resolveEntry', () => {
     expect(result.dep).toBeUndefined()
     expect(result.warning?.class).toBe('incomplete')
   })
+
+  // ── Robustness: non-string workspace glob must not crash the scan ─────────────
+  it('non-string workspace glob entry does not throw (crafted/malformed lockfile)', () => {
+    // rootWorkspaces is typed string[] but comes from untrusted lockfile JSON. A non-string
+    // element (e.g. "workspaces": [123]) reaching matchesGlob().split() throws an uncaught
+    // TypeError, which the CLI's top-level catch maps to exit 1 ("findings") — misreporting a
+    // crash as a scan result. The matcher must skip non-string globs instead.
+    expect(() =>
+      resolveEntry('packages/foo', { version: '1.0.0', name: 'foo' }, [123 as unknown as string]),
+    ).not.toThrow()
+  })
+
+  it('ignores non-string globs but still honors valid string globs alongside them', () => {
+    const result = resolveEntry(
+      'packages/frontend',
+      { version: '1.0.0', name: 'frontend' },
+      [123 as unknown as string, 'packages/*'],
+    )
+    expect(result.dep).toEqual({ name: 'frontend', version: '1.0.0', local: true })
+  })
+
+  // ── Supply-chain: lockfile-only tamper must not hide a real dep via link:true ─
+  it('does NOT treat a node_modules entry as local when link:true is paired with a version (lockfile tamper)', () => {
+    // A genuine npm workspace symlink entry carries link:true and NO version. An attacker can add
+    // link:true to a real registry dep (which keeps its version + resolved tarball) to make
+    // vulnscan mark it local and skip it — a silent false-clean (exit 0). Only a versionless link
+    // entry is a real symlink; a link entry that also has a concrete version is a tamper signal.
+    const result = resolveEntry('node_modules/left-pad', {
+      version: '0.0.1',
+      resolved: 'https://registry.npmjs.org/left-pad/-/left-pad-0.0.1.tgz',
+      link: true,
+    })
+    expect(result.dep).toEqual({ name: 'left-pad', version: '0.0.1' })
+    expect(result.dep?.local).toBeUndefined()
+  })
+
+  it('still treats a versionless link entry as a local workspace (genuine npm symlink — no regression)', () => {
+    const result = resolveEntry('node_modules/my-lib', { link: true, name: 'my-lib' })
+    expect(result.dep?.local).toBe(true)
+  })
 })
