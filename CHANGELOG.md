@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.1] — 2026-07-04
+
+### Refactors
+
+- **Advisory coalescing extracted into a shared `advisory-assembler` seam (#50)** — the "one `Advisory` per `(id, packageName)`, ranges unioned, most-severe severity wins" invariant added by #48 lived in duplicate inside both `osvEntryToAdvisories` and `ghAdvisoryToAdvisories`, so the silent-false-negative class of bug could re-open in either copy. Both source adapters now build a list of per-package `PackageContribution`s and hand them to `assembleAdvisories(identity, contributions)` in `src/advisory-assembler.ts`; the adapters shrink to wire-format translation. The merge invariant now has one home and one test surface (`advisory-assembler.test.ts`, 5 cases including "no range is lost"). No behavior change — 401/401 tests green.
+
 ## [0.3.0] — 2026-07-04
 
 ### New features
