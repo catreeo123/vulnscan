@@ -476,6 +476,34 @@ describe('B4f — GitHub incremental upsert must not downgrade an OSV malware ad
   })
 })
 
+describe('B4g — GitHub incremental upsert must not mix a mal row\'s title/url with the blocked cve write (#56)', () => {
+  it('keeps the existing title/url when a cve-typed write is blocked from downgrading a mal row', () => {
+    const database = makeDb()
+
+    // A GHSA-id malware advisory is stored first (GitHub's malware pass).
+    upsertAdvisory(database, {
+      id: 'GHSA-mix0-aaaa-bbbb', canonicalId: 'GHSA-mix0-aaaa-bbbb', type: 'mal', packageName: 'mix-pkg',
+      ranges: [{ rawRange: '>= 0' }], severity: 'critical',
+      title: 'malware: data exfiltration', url: 'https://github.com/advisories/GHSA-mix0-aaaa-bbbb',
+    })
+
+    // A later cve-typed write collides on the same PK. type/severity are already guarded (sticky
+    // malware classification), but title/url were still taken from `excluded` — producing a mixed
+    // row: type='mal' at critical severity, but the CVE's title/url (#56).
+    upsertAdvisory(database, {
+      id: 'GHSA-mix0-aaaa-bbbb', canonicalId: 'GHSA-mix0-aaaa-bbbb', type: 'cve', packageName: 'mix-pkg',
+      ranges: [{ rawRange: '< 1.0.0' }], severity: 'low',
+      title: 'a minor cve', url: 'https://github.com/advisories/GHSA-yyyy-zzzz-wwww',
+    })
+
+    const stored = getAdvisoriesForPackage(database, 'mix-pkg')[0]
+    expect(stored.type).toBe('mal')
+    expect(stored.severity).toBe('critical')
+    expect(stored.title).toBe('malware: data exfiltration')
+    expect(stored.url).toBe('https://github.com/advisories/GHSA-mix0-aaaa-bbbb')
+  })
+})
+
 describe('C2 — migration backfills canonical_id', () => {
   it('migration backfills canonical_id from URL for pre-migration rows', () => {
     // Seed a DB with the old schema (no canonical_id column)

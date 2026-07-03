@@ -119,8 +119,10 @@ export function upsertAdvisory(db: Database.Database, advisory: Advisory): void 
       type = CASE WHEN advisories.type = 'mal' THEN advisories.type ELSE excluded.type END,
       affected_ranges_json = excluded.affected_ranges_json,
       severity = CASE WHEN advisories.type = 'mal' AND excluded.type != 'mal' THEN advisories.severity ELSE excluded.severity END,
-      title = excluded.title,
-      url = excluded.url,
+      -- A blocked mal→cve downgrade (above) must not leave a mixed row: keep the malware
+      -- advisory's own title/url instead of taking the (blocked) cve write's values (#56).
+      title = CASE WHEN advisories.type = 'mal' AND excluded.type != 'mal' THEN advisories.title ELSE excluded.title END,
+      url = CASE WHEN advisories.type = 'mal' AND excluded.type != 'mal' THEN advisories.url ELSE excluded.url END,
       canonical_id = excluded.canonical_id,
       synced_at = excluded.synced_at,
       last_seen_in_full_sync = excluded.last_seen_in_full_sync,

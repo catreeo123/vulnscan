@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.25] — 2026-07-04
+
+### Fixes
+
+- **A blocked `mal→cve` downgrade no longer leaves a mixed row with the wrong `title`/`url`** — `upsertAdvisory`'s malware-sticky guard (v0.2.23) preserves `type`/`severity` when a `cve`-typed write collides with an existing `type='mal'` row, but `title`/`url` were still taken unconditionally from the incoming (blocked) write — producing a row that reports as malware at critical severity but displays the colliding CVE's title and link, in both text and `--format json` output. `title`/`url` now carry the same `CASE WHEN advisories.type = 'mal' AND excluded.type != 'mal'` guard as `severity`. Cosmetic only — detection and exit codes were unaffected. (#56)
+
 ## [0.2.24] — 2026-07-04
 
 ### Internal
