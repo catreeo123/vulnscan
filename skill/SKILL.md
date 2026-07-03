@@ -27,7 +27,7 @@ vulnscan scan <path> --format json
 
 ### 2. Parse JSON output
 
-Schema: `schemaVersion`, `findings[]`, `warnings[]`.
+Schema: `schemaVersion`, `findings[]`, `warnings[]`, `warningDetails[]` (`{ class, message }` — additive, same notices as `warnings` with the exit-code-driving `class`).
 
 If `schemaVersion !== "1"`: warn the user the schema has changed and stop.
 

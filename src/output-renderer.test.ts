@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { renderGrouped, renderJson } from './output-renderer.js'
 import type { Finding } from './types.js'
-import { incomplete } from './warnings.js'
+import { incomplete, informational } from './warnings.js'
 
 // Minimal advisory factory
 function mkAdvisory(overrides: Partial<{
@@ -305,7 +305,20 @@ describe('renderJson', () => {
 
   it('returns wrapper with empty findings and warnings when nothing provided', () => {
     const out = JSON.parse(renderJson([], []))
-    expect(out).toEqual({ schemaVersion: '1', findings: [], warnings: [] })
+    expect(out).toEqual({ schemaVersion: '1', findings: [], warnings: [], warningDetails: [] })
+  })
+
+  // ── #44: warningDetails — additive field carrying ScanWarning.class ────────
+
+  it('warningDetails carries class alongside the existing warnings: string[] (#44)', () => {
+    const out = JSON.parse(
+      renderJson([], [incomplete('lockfile v1 not supported'), informational('npm alias detected')]),
+    )
+    expect(out.warnings).toEqual(['lockfile v1 not supported', 'npm alias detected'])
+    expect(out.warningDetails).toEqual([
+      { class: 'incomplete', message: 'lockfile v1 not supported' },
+      { class: 'informational', message: 'npm alias detected' },
+    ])
   })
 
   it('includes name, version, advisory, and fix field in each entry', () => {

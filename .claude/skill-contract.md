@@ -26,7 +26,7 @@ Parse the JSON output per `docs/output-schema.md`.
 
 ### Warnings
 
-If `warnings` is non-empty, list them first under a "Warnings" heading. These are non-fatal — continue to findings.
+If `warnings` is non-empty, list them first under a "Warnings" heading. These are non-fatal — continue to findings. `warningDetails[].class` (`"incomplete"` vs `"informational"`) is available if you need to distinguish coverage-affecting warnings from purely informational ones — plain-text `warnings` is sufficient for display.
 
 ### Zero findings
 

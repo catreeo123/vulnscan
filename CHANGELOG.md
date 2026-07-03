@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.0] — 2026-07-04
+
+### New features
+
+- **`--format json` output now includes `warningDetails`** — `renderJson`'s `warnings` field has always been `string[]`, forcing a consumer that needs to distinguish coverage-affecting warnings (`incomplete`, drives exit `2`) from purely informational ones to string-match messages. `warningDetails: { class, message }[]` carries the full `ScanWarning` alongside the unchanged `warnings` field. Purely additive — `warnings` and `schemaVersion` are untouched, so this ships as a minor release rather than a schema-version bump. Documented in `docs/output-schema.md`, `.claude/skill-contract.md`, and `skill/SKILL.md`. (#44)
+
 ## [0.2.28] — 2026-07-04
 
 ### Fixes

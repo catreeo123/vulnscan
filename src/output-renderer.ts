@@ -69,6 +69,11 @@ export function renderJson(findings: Finding[], warnings: ScanWarning[]): string
       fix: firstFixed(f.advisory.ranges),
     })),
     warnings: warnings.map((w) => w.message),
+    // Additive (#44): warnings loses ScanWarning.class, forcing consumers to string-match
+    // messages to distinguish incomplete (exit 2) from informational notices. warningDetails
+    // carries the full ScanWarning alongside the existing field — non-breaking, no schemaVersion
+    // bump (see docs/output-schema.md's additive-fields-don't-bump-version rule).
+    warningDetails: warnings.map((w) => ({ class: w.class, message: w.message })),
   }
   return JSON.stringify(out, null, 2)
 }
