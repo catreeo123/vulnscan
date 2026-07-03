@@ -2,6 +2,11 @@ export type Dep = { name: string; version: string; via?: string; local?: boolean
 
 export type Severity = 'critical' | 'high' | 'moderate' | 'low'
 
+/** Canonical low→critical ordering; a higher index is a more severe rating. Single source of
+ * truth for both the fail-on threshold comparison (failure-threshold.ts) and the "most severe
+ * wins" advisory merge (advisory-assembler.ts) — they must never drift independently. */
+export const SEVERITY_ORDER: Severity[] = ['low', 'moderate', 'high', 'critical']
+
 export type SemverRange = {
   introduced?: string
   fixed?: string

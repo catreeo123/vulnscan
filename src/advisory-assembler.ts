@@ -1,6 +1,5 @@
 import type { Advisory, SemverRange, Severity } from './types.js'
-
-const SEVERITY_RANK: Record<Severity, number> = { low: 0, moderate: 1, high: 2, critical: 3 }
+import { SEVERITY_ORDER } from './types.js'
 
 /** Fields shared by every Advisory coalesced from a single upstream entry. */
 export type AdvisoryIdentity = {
@@ -46,7 +45,7 @@ export function assembleAdvisories(
     if (existing) {
       existing.ranges.push(...c.ranges)
       // Fail-safe: keep the most severe rating seen across blocks for the same package.
-      if (SEVERITY_RANK[c.severity] > SEVERITY_RANK[existing.severity]) existing.severity = c.severity
+      if (SEVERITY_ORDER.indexOf(c.severity) > SEVERITY_ORDER.indexOf(existing.severity)) existing.severity = c.severity
     } else {
       byPackage.set(c.packageName, { ranges: [...c.ranges], severity: c.severity })
     }

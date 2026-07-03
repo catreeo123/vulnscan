@@ -3,6 +3,7 @@ import { incomplete } from './warnings.js'
 import type { ScanWarning } from './warnings.js'
 import { resolveAdvisorySeverity } from './severity-mapper.js'
 import { assembleAdvisories, type PackageContribution } from './advisory-assembler.js'
+import { ADVISORY_SOURCE } from './advisory-source.js'
 
 const GITHUB_API = 'https://api.github.com'
 const PER_PAGE = 100
@@ -106,7 +107,7 @@ export async function syncGithubAdvisories(
   // preserves the cursor so the next sync retries from the same point.
   // Also skip advancing when page limit was hit so the next run retries.
   if (!hitPageLimit) {
-    store.setLastSyncedAt('github', Date.now())
+    store.setLastSyncedAt(ADVISORY_SOURCE.GITHUB, Date.now())
   }
   process.stderr.write(`GitHub Advisory: imported ${imported} advisories (${skipped} items skipped)\n`)
   return { imported, skipped, warnings }

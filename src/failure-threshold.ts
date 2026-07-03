@@ -1,11 +1,9 @@
 import type { Finding, Severity } from './types.js'
+import { SEVERITY_ORDER } from './types.js'
 import type { Config } from './config.js'
 import { validateFailOn } from './config.js'
 import type { ScanWarning } from './warnings.js'
 import { hasIncomplete } from './warnings.js'
-
-/** Severity floor ordering; a higher index is a more severe rating. */
-const SEVERITY_ORDER: Severity[] = ['low', 'moderate', 'high', 'critical']
 
 /**
  * Resolve the effective fail-on severity set. An explicit `--fail-on` CSV (validated,

@@ -4,6 +4,7 @@ export class InMemoryAdvisoryStore implements AdvisoryStore {
   private advisories = new Map<string, Advisory>()
   private syncMeta = new Map<string, number>()
   private fullSyncTimestamps = new Map<string, number>()
+  private githubKeys = new Set<string>()
 
   getForPackage(name: string): Advisory[] {
     return [...this.advisories.values()]
@@ -22,10 +23,16 @@ export class InMemoryAdvisoryStore implements AdvisoryStore {
     // exempts it from pruneStaleAdvisories's 'osv'-only filter — a stale fullSyncTimestamps entry
     // from an earlier OSV full sync must not survive to prune a row GitHub has since re-touched.
     this.fullSyncTimestamps.delete(key)
+    this.githubKeys.add(key)
   }
 
   upsertFromFullSync(advisory: Advisory, fullSyncStartedAt: number): void {
     const key = `${advisory.id}:${advisory.packageName}`
+    // Mirrors SQLite's upsertAdvisoryFromFullSync source='github' guard: an OSV full sync must
+    // not overwrite a GitHub-sourced row's data, nor re-expose it to future pruning by re-adding
+    // a fullSyncTimestamps entry — a later collision here would otherwise silently undo the
+    // permanent exemption upsert() just established (#45).
+    if (this.githubKeys.has(key)) return
     this.advisories.set(key, advisory)
     this.fullSyncTimestamps.set(key, fullSyncStartedAt)
   }

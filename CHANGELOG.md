@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.5] — 2026-07-04
+
+### Fixes
+
+- **`InMemoryAdvisoryStore.upsertFromFullSync` no longer overwrites a GitHub-sourced row (code-review finding)** — the #45 fix only guarded the collision order "OSV then GitHub" (`upsert()` clears a stale `fullSyncTimestamps` entry). The reverse order — `upsertFromFullSync` colliding with an already GitHub-sourced key — still silently overwrote the row's data and re-added a `fullSyncTimestamps` entry, letting a later `pruneStale` delete a row the SQLite-backed store would keep permanently exempt. `upsertFromFullSync` now no-ops entirely on a GitHub-tracked key, mirroring SQLite's `source = CASE WHEN ... = 'github'` guard.
+
+### Refactors
+
+- **Removed a leftover raw `'github'` literal and a duplicated severity-ordering table (code-review findings)** — `github-advisory-sync.ts`'s `setLastSyncedAt` call still used a bare string instead of the `ADVISORY_SOURCE.GITHUB` constant introduced by #53; now fixed. `advisory-assembler.ts`'s `SEVERITY_RANK` duplicated `failure-threshold.ts`'s `SEVERITY_ORDER`; both now derive from a single `SEVERITY_ORDER` export in `types.ts`.
+
 ## [0.3.4] — 2026-07-04
 
 ### Refactors

@@ -92,6 +92,20 @@ describe('InMemoryAdvisoryStore', () => {
     expect(store.getForPackage('lodash')[0].severity).toBe('critical')
   })
 
+  it('upsertFromFullSync does not re-expose a GitHub-sourced row to pruning (code-review finding)', () => {
+    // Mirrors SQLite's source='github' guard in upsertAdvisoryFromFullSync: an OSV full sync
+    // colliding with an existing GitHub-sourced row must not overwrite it, nor re-add a
+    // fullSyncTimestamps entry that a later pruneStale could use to delete it. The prior fix
+    // only guarded upsert() re-touching an OSV row — this is the reverse collision order.
+    store.upsert({ ...advisory, severity: 'critical' })
+    store.upsertFromFullSync({ ...advisory, severity: 'low' }, 1000)
+    // fullSyncStartedAt=2000, gracePeriod=0 → cutoff=2000 → t0=1000 would be "stale" by
+    // timestamp alone if upsertFromFullSync had re-added the entry.
+    store.pruneStale(2000, 0)
+    expect(store.getForPackage('lodash')).toHaveLength(1)
+    expect(store.getForPackage('lodash')[0].severity).toBe('critical')
+  })
+
   it('close is a no-op (does not throw)', () => {
     expect(() => store.close()).not.toThrow()
   })
