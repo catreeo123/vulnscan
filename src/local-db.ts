@@ -112,9 +112,13 @@ export function upsertAdvisory(db: Database.Database, advisory: Advisory): void 
     INSERT INTO advisories (id, type, package_name, affected_ranges_json, severity, title, url, canonical_id, synced_at, last_seen_in_full_sync, source)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'github')
     ON CONFLICT (id, package_name) DO UPDATE SET
-      type = excluded.type,
+      -- Malware classification is sticky: never let a later cve-typed write (e.g. GitHub's reviewed
+      -- pass colliding with an OSV MAL-* entry that carries a CVE alias) downgrade an existing
+      -- malware row to a plain CVE and drop it below the fail threshold. A cve→mal upgrade
+      -- (GitHub's malware pass promoting a row) is still allowed.
+      type = CASE WHEN advisories.type = 'mal' THEN advisories.type ELSE excluded.type END,
       affected_ranges_json = excluded.affected_ranges_json,
-      severity = excluded.severity,
+      severity = CASE WHEN advisories.type = 'mal' AND excluded.type != 'mal' THEN advisories.severity ELSE excluded.severity END,
       title = excluded.title,
       url = excluded.url,
       canonical_id = excluded.canonical_id,
@@ -156,8 +160,11 @@ export function upsertAdvisoryFromFullSync(
       -- severity below the fail threshold. GitHub's own incremental sync keeps these rows current.
       affected_ranges_json = CASE WHEN advisories.source = 'github' THEN advisories.affected_ranges_json ELSE excluded.affected_ranges_json END,
       severity = CASE WHEN advisories.source = 'github' THEN advisories.severity ELSE excluded.severity END,
-      title = excluded.title,
-      url = excluded.url,
+      -- title/url are part of the documented output contract (rendered verbatim in --format json)
+      -- and, like the guarded columns above, must keep GitHub's curated values on collision: an OSV
+      -- mirror's generic osv.dev summary/link must not overwrite GitHub's advisory reference.
+      title = CASE WHEN advisories.source = 'github' THEN advisories.title ELSE excluded.title END,
+      url = CASE WHEN advisories.source = 'github' THEN advisories.url ELSE excluded.url END,
       -- canonical_id is the stable cross-source identifier (GitHub stores the GHSA id). An OSV
       -- mirror lacking a GHSA alias derives a CVE-id canonical_id; overwriting would make a
       -- GitHub row's identity sync-order-dependent and break dedup/suppression keyed on the GHSA.

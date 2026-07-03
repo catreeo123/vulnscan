@@ -401,6 +401,81 @@ describe('B4d — OSV full-sync must not overwrite a GitHub row\'s stable GHSA c
   })
 })
 
+describe('B4e — OSV full-sync must not overwrite a GitHub-sourced advisory\'s title/url (#49)', () => {
+  it('preserves the GitHub title and url when a later OSV full sync collides on the same PK', () => {
+    const database = makeDb()
+
+    // GitHub stores a CVE with its curated title and canonical github.com advisory URL.
+    upsertAdvisory(database, {
+      id: 'CVE-2099-turl', canonicalId: 'GHSA-turl-aaaa-bbbb', type: 'cve', packageName: 'turl-pkg',
+      ranges: [{ rawRange: '< 2.0.0' }], severity: 'high',
+      title: 'GitHub curated title', url: 'https://github.com/advisories/GHSA-turl-aaaa-bbbb',
+    })
+
+    // A later OSV full sync mirrors the same advisory (same PK) with OSV's generic summary and
+    // osv.dev URL. title/url are part of the documented output contract (rendered verbatim in
+    // --format json), so — like ranges/severity/type/canonical_id — they must NOT be overwritten
+    // with OSV's (often stale/generic) values when a GitHub row already exists.
+    upsertAdvisoryFromFullSync(database, {
+      id: 'CVE-2099-turl', canonicalId: 'GHSA-turl-aaaa-bbbb', type: 'cve', packageName: 'turl-pkg',
+      ranges: [{ introduced: '0', fixed: '2.0.0' }], severity: 'high',
+      title: 'osv generic summary', url: 'https://osv.dev/vulnerability/CVE-2099-turl',
+    }, Date.now())
+
+    const stored = getAdvisoriesForPackage(database, 'turl-pkg')[0]
+    expect(stored.title).toBe('GitHub curated title')
+    expect(stored.url).toBe('https://github.com/advisories/GHSA-turl-aaaa-bbbb')
+  })
+})
+
+describe('B4f — GitHub incremental upsert must not downgrade an OSV malware advisory to cve', () => {
+  it('keeps type=mal and critical severity when a GitHub reviewed-pass cve write collides on the same PK', () => {
+    const database = makeDb()
+
+    // OSV full sync ingested a MAL-* OpenSSF entry that also carries a CVE alias: getBestId picks
+    // the CVE id for the row id, but isMalware keeps type='mal' and severity is forced 'critical'.
+    upsertAdvisoryFromFullSync(database, {
+      id: 'CVE-2099-mal', canonicalId: 'CVE-2099-mal', type: 'mal', packageName: 'evil2-pkg',
+      ranges: [{ introduced: '0' }], severity: 'critical',
+      title: 'malware: data exfiltration', url: 'https://osv.dev/vulnerability/MAL-2099-1',
+    }, Date.now())
+
+    // GitHub's reviewed pass has a plain-CVE advisory sharing the same CVE id for the same package
+    // (GHSA has not flagged it malware). Its upsert must NOT relabel the row type='cve' at GitHub's
+    // lower severity — that silently drops the malware signal below the fail threshold (false clean).
+    upsertAdvisory(database, {
+      id: 'CVE-2099-mal', canonicalId: 'CVE-2099-mal', type: 'cve', packageName: 'evil2-pkg',
+      ranges: [{ rawRange: '< 1.0.0' }], severity: 'low',
+      title: 'a minor cve', url: 'https://github.com/advisories/GHSA-xxxx-yyyy-zzzz',
+    })
+
+    const stored = getAdvisoriesForPackage(database, 'evil2-pkg')[0]
+    expect(stored.type).toBe('mal')          // malware classification must be sticky
+    expect(stored.severity).toBe('critical') // must not be downgraded below the fail threshold
+  })
+
+  it('still allows a cve→mal upgrade (GitHub malware pass promotes an existing cve row)', () => {
+    const database = makeDb()
+
+    // A plain CVE is stored first.
+    upsertAdvisory(database, {
+      id: 'CVE-2099-up', canonicalId: 'CVE-2099-up', type: 'cve', packageName: 'up-pkg',
+      ranges: [{ rawRange: '< 1.0.0' }], severity: 'moderate',
+      title: 'cve', url: 'https://github.com/advisories/GHSA-up',
+    })
+    // GitHub's malware pass later flags the same id as malware — this upgrade must go through.
+    upsertAdvisory(database, {
+      id: 'CVE-2099-up', canonicalId: 'CVE-2099-up', type: 'mal', packageName: 'up-pkg',
+      ranges: [{ rawRange: '< 1.0.0' }], severity: 'critical',
+      title: 'now flagged malware', url: 'https://github.com/advisories/GHSA-up',
+    })
+
+    const stored = getAdvisoriesForPackage(database, 'up-pkg')[0]
+    expect(stored.type).toBe('mal')
+    expect(stored.severity).toBe('critical')
+  })
+})
+
 describe('C2 — migration backfills canonical_id', () => {
   it('migration backfills canonical_id from URL for pre-migration rows', () => {
     // Seed a DB with the old schema (no canonical_id column)
