@@ -109,7 +109,11 @@ export async function runSync(store: AdvisoryStore): Promise<ScanWarning[]> {
 }
 
 async function syncGithubSafe(store: AdvisoryStore): Promise<ScanWarning[]> {
-  const since = store.getLastSyncedAt('github') ?? undefined
+  const stored = store.getLastSyncedAt('github')
+  // Reject a future cursor (clock skew): using it as the `updated>=` filter would match nothing,
+  // then syncGithubAdvisories advances the cursor to now — silently erasing the window between the
+  // true last-good sync and now. Fall back to a full pull (since=undefined), mirroring OSV.
+  const since = stored !== null && stored <= Date.now() ? stored : undefined
   try {
     const { warnings } = await syncGithubAdvisories(store, since)
     return warnings

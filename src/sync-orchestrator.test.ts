@@ -374,3 +374,32 @@ describe('D8: clock-skew warning survives double-check short-circuit', () => {
     expect(warnings.some((w) => w.class === 'informational' && w.message.includes('clock skew'))).toBe(true)
   })
 })
+
+// ─── D8: clock-skew forces a full GitHub pull (does not query with the poisoned future cursor) ──
+
+describe('D8: clock-skew forces a full GitHub pull', () => {
+  it('does not pass the future cursor as `since` to syncGithubAdvisories when the github cursor is in the future', async () => {
+    const { syncGithubAdvisories } = await import('./github-advisory-sync.js')
+    vi.mocked(syncGithubAdvisories).mockClear()
+
+    const future = Date.now() + 10 * 60 * 60 * 1000 // 10h in the future (clock skew)
+    // osv fresh (past) so only github runs; github cursor is in the future.
+    let callCount = 0
+    const store = makeStore({
+      getLastSyncedAt: vi.fn().mockImplementation(() => {
+        callCount++
+        if (callCount === 1) return Date.now() - 1000 // osv: fresh
+        return future                                  // github initial, double-check, since lookup
+      }),
+    })
+
+    const { syncIfStale } = await import('./sync-orchestrator.js')
+    await syncIfStale(store)
+
+    // A future `since` builds an `updated>=<future>` filter that matches nothing, then the cursor
+    // advances to now — permanently erasing the gap. The skew path must force a full pull, i.e.
+    // call syncGithubAdvisories with since=undefined rather than the poisoned future timestamp.
+    expect(vi.mocked(syncGithubAdvisories)).toHaveBeenCalled()
+    expect(vi.mocked(syncGithubAdvisories).mock.calls[0][1]).toBeUndefined()
+  })
+})
