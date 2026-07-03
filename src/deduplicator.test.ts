@@ -96,4 +96,34 @@ describe('deduplicate', () => {
 
     expect(result).toHaveLength(1)
   })
+
+  it('keeps the malware Finding over a CVE on a critical-severity tie (cve arrives first)', () => {
+    // getAdvisoriesForPackage orders canonical_id ASC, id ASC, so a CVE-id row sorts before a
+    // MAL-/GHSA-id row sharing the same canonicalId → the cve Finding enters the map first. A
+    // strict `>` severity comparison then drops the equally-critical malware Finding, losing the
+    // type='mal' signal the skill contract keys on. Malware must win the tie.
+    const cveFinding = baseFinding({
+      advisory: { ...baseFinding().advisory, id: 'CVE-2099-1', canonicalId: 'GHSA-TIE-AAAA-BBBB', type: 'cve', severity: 'critical' },
+    })
+    const malFinding = baseFinding({
+      advisory: { ...baseFinding().advisory, id: 'GHSA-tie-aaaa-bbbb', canonicalId: 'GHSA-TIE-AAAA-BBBB', type: 'mal', severity: 'critical' },
+    })
+
+    const result = deduplicate([cveFinding, malFinding])
+    expect(result).toHaveLength(1)
+    expect(result[0].advisory.type).toBe('mal')
+  })
+
+  it('keeps the malware Finding regardless of input order (mal arrives first)', () => {
+    const cveFinding = baseFinding({
+      advisory: { ...baseFinding().advisory, id: 'CVE-2099-1', canonicalId: 'GHSA-TIE-AAAA-BBBB', type: 'cve', severity: 'critical' },
+    })
+    const malFinding = baseFinding({
+      advisory: { ...baseFinding().advisory, id: 'GHSA-tie-aaaa-bbbb', canonicalId: 'GHSA-TIE-AAAA-BBBB', type: 'mal', severity: 'critical' },
+    })
+
+    const result = deduplicate([malFinding, cveFinding])
+    expect(result).toHaveLength(1)
+    expect(result[0].advisory.type).toBe('mal')
+  })
 })

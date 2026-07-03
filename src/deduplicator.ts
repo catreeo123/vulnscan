@@ -14,7 +14,21 @@ export function deduplicate(findings: Finding[]): Finding[] {
     const key = `${finding.name}@${finding.version}:${finding.advisory.canonicalId}`
     const existing = map.get(key)
 
-    if (!existing || SEVERITY_RANK[finding.advisory.severity] > SEVERITY_RANK[existing.advisory.severity]) {
+    if (!existing) {
+      map.set(key, finding)
+      continue
+    }
+
+    const finRank = SEVERITY_RANK[finding.advisory.severity]
+    const exRank = SEVERITY_RANK[existing.advisory.severity]
+    // Higher severity wins. On a severity tie, a malware Finding wins over a non-malware one so the
+    // type='mal' signal (and its "remove, don't upgrade" remediation) is never dropped just because
+    // a CVE row happened to sort/arrive first — getForPackage orders canonical_id, id ASC, so a CVE
+    // id precedes a MAL-/GHSA id sharing the same canonicalId.
+    const tieFavorsMal =
+      finRank === exRank && finding.advisory.type === 'mal' && existing.advisory.type !== 'mal'
+
+    if (finRank > exRank || tieFavorsMal) {
       map.set(key, finding)
     }
   }
