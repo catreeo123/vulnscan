@@ -5,15 +5,14 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { openStore } from './advisory-store-sqlite.js'
 import { runSync } from './sync-orchestrator.js'
-import { loadConfig, validateFailOn } from './config.js'
+import { loadConfig } from './config.js'
 import { renderGrouped, renderJson } from './output-renderer.js'
 import { runScan, checkPackage } from './scanner.js'
 import { parseArgs } from './cli-args.js'
 import { scrubSecrets } from './secrets.js'
 import { maybeBootstrap } from './bootstrap.js'
 import { hasIncomplete } from './warnings.js'
-import type { Severity, Finding } from './types.js'
-import type { ScanWarning } from './warnings.js'
+import { computeExitCode, resolveFailOn } from './failure-threshold.js'
 
 export async function run(argv: string[]): Promise<number> {
   const parsed = parseArgs(argv)
@@ -76,7 +75,7 @@ export async function run(argv: string[]): Promise<number> {
         process.stdout.write(renderGrouped(result.findings, result.warnings) + '\n')
       }
 
-      return computeExitCode(result.findings, result.warnings, getFailOn(parsed.failOn, parsed.dir ?? '.'))
+      return computeExitCode(result.findings, result.warnings, resolveFailOn(parsed.failOn, config))
     } finally {
       safeClose(store)
     }
@@ -106,7 +105,7 @@ export async function run(argv: string[]): Promise<number> {
         process.stdout.write(renderGrouped(result.findings, result.warnings) + '\n')
       }
 
-      return computeExitCode(result.findings, result.warnings, getFailOn(parsed.failOn, projectDir))
+      return computeExitCode(result.findings, result.warnings, resolveFailOn(parsed.failOn, config))
     } finally {
       safeClose(store)
     }
@@ -219,36 +218,6 @@ export function safeClose(db: { close(): void }): void {
   } catch (err) {
     process.stderr.write(`Warning: db.close failed: ${(err as Error).message}\n`)
   }
-}
-
-function getFailOn(failOnArg: string | null, projectDir = '.'): Severity[] {
-  if (failOnArg) return validateFailOn(failOnArg.split(',')) // M2 fix: validate instead of cast
-  const config = loadConfig(projectDir)
-  return config.failOn
-}
-
-const SEVERITY_ORDER: Severity[] = ['low', 'moderate', 'high', 'critical']
-
-function shouldFail(findings: Finding[], failOn: Severity[]): boolean {
-  const indices = failOn.map((s) => SEVERITY_ORDER.indexOf(s)).filter((i) => i >= 0)
-  if (indices.length === 0) return false
-  const threshold = Math.min(...indices)
-  return findings.some((f) => SEVERITY_ORDER.indexOf(f.advisory.severity) >= threshold)
-}
-
-/**
- * Exit code matrix (priority: incomplete > findings > clean):
- *   2 — at least one incomplete warning (scan may have missed packages; findings are untrustworthy)
- *   1 — no incomplete warnings, but at least one finding is at or above the failOn floor
- *   0 — clean (no qualifying findings AND no incomplete warnings)
- *
- * Exit 2 takes priority over exit 1 because an incomplete scan cannot be trusted:
- * the missing packages may have had worse findings than the ones reported.
- */
-export function computeExitCode(findings: Finding[], warnings: ScanWarning[], failOn: Severity[]): number {
-  if (hasIncomplete(warnings)) return 2
-  if (shouldFail(findings, failOn)) return 1
-  return 0
 }
 
 // Only dispatch when executed as the entry point (bin / `node dist/cli.js` / `tsx src/cli.ts`),
