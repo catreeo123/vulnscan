@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import * as fs from 'node:fs'
 import { join, dirname } from 'node:path'
 import type { Advisory, SemverRange, Severity } from './types.js'
+import { ADVISORY_SOURCE } from './advisory-source.js'
 
 export const DB_PATH = process.env.VULNSCAN_DB_PATH ?? join(homedir(), '.vulnscan', 'db.sqlite')
 
@@ -96,8 +97,8 @@ export function openDb(path = DB_PATH): Database.Database {
     // Backfill source for pre-migration rows from the advisory url so the source-aware
     // prune below can tell OSV rows (prunable) from GitHub rows (exempt). Unknown urls
     // stay '' and are never pruned (conservative — never silently drop an Advisory).
-    db.exec(`UPDATE advisories SET source = 'github' WHERE source = '' AND url LIKE '%github.com%'`)
-    db.exec(`UPDATE advisories SET source = 'osv' WHERE source = '' AND url LIKE '%osv.dev%'`)
+    db.exec(`UPDATE advisories SET source = '${ADVISORY_SOURCE.GITHUB}' WHERE source = '' AND url LIKE '%github.com%'`)
+    db.exec(`UPDATE advisories SET source = '${ADVISORY_SOURCE.OSV}' WHERE source = '' AND url LIKE '%osv.dev%'`)
   }
   return db
 }
@@ -110,7 +111,7 @@ export function upsertAdvisory(db: Database.Database, advisory: Advisory): void 
   const now = Date.now()
   db.prepare(`
     INSERT INTO advisories (id, type, package_name, affected_ranges_json, severity, title, url, canonical_id, synced_at, last_seen_in_full_sync, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'github')
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '${ADVISORY_SOURCE.GITHUB}')
     ON CONFLICT (id, package_name) DO UPDATE SET
       -- Malware classification is sticky: never let a later cve-typed write (e.g. GitHub's reviewed
       -- pass colliding with an OSV MAL-* entry that carries a CVE alias) downgrade an existing
@@ -148,34 +149,34 @@ export function upsertAdvisoryFromFullSync(
 ): void {
   db.prepare(`
     INSERT INTO advisories (id, type, package_name, affected_ranges_json, severity, title, url, canonical_id, synced_at, last_seen_in_full_sync, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'osv')
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '${ADVISORY_SOURCE.OSV}')
     ON CONFLICT (id, package_name) DO UPDATE SET
       -- Preserve a GitHub row's malware classification: a GHSA-id malware advisory (type='mal')
       -- can collide with an OSV mirror that derives type='cve' (no MAL-/CVE alias). Overwriting
       -- would relabel it 'cve' and drop the malware signal downstream consumers key on.
-      type = CASE WHEN advisories.source = 'github' THEN advisories.type ELSE excluded.type END,
+      type = CASE WHEN advisories.source = '${ADVISORY_SOURCE.GITHUB}' THEN advisories.type ELSE excluded.type END,
       -- A CVE-numbered advisory shares its PK (id, package_name) across both feeds (getBestId
       -- prefers the CVE alias = GitHub's id), so an OSV full sync collides with a GitHub row.
       -- An OSV full sync must NOT degrade GitHub's curated vulnerability data: the OSV mirror
       -- frequently lags GitHub (fewer/narrower ranges, lower severity), and overwriting would
       -- silently drop coverage for versions only GitHub lists (false negative) or lower the
       -- severity below the fail threshold. GitHub's own incremental sync keeps these rows current.
-      affected_ranges_json = CASE WHEN advisories.source = 'github' THEN advisories.affected_ranges_json ELSE excluded.affected_ranges_json END,
-      severity = CASE WHEN advisories.source = 'github' THEN advisories.severity ELSE excluded.severity END,
+      affected_ranges_json = CASE WHEN advisories.source = '${ADVISORY_SOURCE.GITHUB}' THEN advisories.affected_ranges_json ELSE excluded.affected_ranges_json END,
+      severity = CASE WHEN advisories.source = '${ADVISORY_SOURCE.GITHUB}' THEN advisories.severity ELSE excluded.severity END,
       -- title/url are part of the documented output contract (rendered verbatim in --format json)
       -- and, like the guarded columns above, must keep GitHub's curated values on collision: an OSV
       -- mirror's generic osv.dev summary/link must not overwrite GitHub's advisory reference.
-      title = CASE WHEN advisories.source = 'github' THEN advisories.title ELSE excluded.title END,
-      url = CASE WHEN advisories.source = 'github' THEN advisories.url ELSE excluded.url END,
+      title = CASE WHEN advisories.source = '${ADVISORY_SOURCE.GITHUB}' THEN advisories.title ELSE excluded.title END,
+      url = CASE WHEN advisories.source = '${ADVISORY_SOURCE.GITHUB}' THEN advisories.url ELSE excluded.url END,
       -- canonical_id is the stable cross-source identifier (GitHub stores the GHSA id). An OSV
       -- mirror lacking a GHSA alias derives a CVE-id canonical_id; overwriting would make a
       -- GitHub row's identity sync-order-dependent and break dedup/suppression keyed on the GHSA.
-      canonical_id = CASE WHEN advisories.source = 'github' THEN advisories.canonical_id ELSE excluded.canonical_id END,
+      canonical_id = CASE WHEN advisories.source = '${ADVISORY_SOURCE.GITHUB}' THEN advisories.canonical_id ELSE excluded.canonical_id END,
       synced_at = excluded.synced_at,
       last_seen_in_full_sync = excluded.last_seen_in_full_sync,
       -- Never downgrade a GitHub-Source row to 'osv', or it would be re-exposed to the OSV
       -- stale-prune once OSV drops it (silent false negative).
-      source = CASE WHEN advisories.source = 'github' THEN 'github' ELSE excluded.source END
+      source = CASE WHEN advisories.source = '${ADVISORY_SOURCE.GITHUB}' THEN '${ADVISORY_SOURCE.GITHUB}' ELSE excluded.source END
   `).run(
     advisory.id,
     advisory.type,
@@ -201,7 +202,7 @@ export function pruneStaleAdvisories(
   // Source advisories are exempt — GitHub Sync is incremental and never re-confirms a static
   // advisory, so pruning by timestamp alone would silently drop live Findings (B2/#49).
   const result = db.prepare(
-    "DELETE FROM advisories WHERE source = 'osv' AND last_seen_in_full_sync < ? AND last_seen_in_full_sync > 0",
+    `DELETE FROM advisories WHERE source = '${ADVISORY_SOURCE.OSV}' AND last_seen_in_full_sync < ? AND last_seen_in_full_sync > 0`,
   ).run(cutoff)
   return result.changes
 }

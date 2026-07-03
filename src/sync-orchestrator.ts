@@ -4,6 +4,7 @@ import { syncGithubAdvisories } from './github-advisory-sync.js'
 import { scrubSecrets } from './secrets.js'
 import { incomplete, informational } from './warnings.js'
 import type { ScanWarning } from './warnings.js'
+import { ADVISORY_SOURCE } from './advisory-source.js'
 
 const DEFAULT_STALENESS_MS = 24 * 60 * 60 * 1000
 
@@ -13,8 +14,8 @@ export async function syncIfStale(
   store: AdvisoryStore,
   stalenessMs = DEFAULT_STALENESS_MS,
 ): Promise<ScanWarning[]> {
-  const osvLast = store.getLastSyncedAt('osv')
-  const ghLast = store.getLastSyncedAt('github')
+  const osvLast = store.getLastSyncedAt(ADVISORY_SOURCE.OSV)
+  const ghLast = store.getLastSyncedAt(ADVISORY_SOURCE.GITHUB)
   const now = Date.now()
 
   const osvSkew = osvLast !== null && now < osvLast
@@ -35,8 +36,8 @@ export async function syncIfStale(
   }
 
   // Double-check: a parallel process may have refreshed cursors while we were deciding.
-  const osvLastAgain = store.getLastSyncedAt('osv')
-  const ghLastAgain = store.getLastSyncedAt('github')
+  const osvLastAgain = store.getLastSyncedAt(ADVISORY_SOURCE.OSV)
+  const ghLastAgain = store.getLastSyncedAt(ADVISORY_SOURCE.GITHUB)
   const nowAgain = Date.now()
   const osvStillStale = osvStale && (osvLastAgain === null || nowAgain < osvLastAgain || nowAgain - osvLastAgain > stalenessMs)
   const ghStillStale = ghStale && (ghLastAgain === null || nowAgain < ghLastAgain || nowAgain - ghLastAgain > stalenessMs)
@@ -112,12 +113,12 @@ function finalizeOsvSync(
 ): ScanWarning[] {
   if (!osvResult) return []
   store.pruneStale(osvResult.fullSyncStartedAt, GRACE_PERIOD_MS)
-  store.setLastSyncedAt('osv', Date.now())
+  store.setLastSyncedAt(ADVISORY_SOURCE.OSV, Date.now())
   return osvResult.warnings
 }
 
 async function syncGithubSafe(store: AdvisoryStore): Promise<ScanWarning[]> {
-  const stored = store.getLastSyncedAt('github')
+  const stored = store.getLastSyncedAt(ADVISORY_SOURCE.GITHUB)
   // Reject a future cursor (clock skew): using it as the `updated>=` filter would match nothing,
   // then syncGithubAdvisories advances the cursor to now — silently erasing the window between the
   // true last-good sync and now. Fall back to a full pull (since=undefined), mirroring OSV.

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.4] — 2026-07-04
+
+### Refactors
+
+- **Advisory source identity centralized into `advisory-source.ts` (#53)** — the `'osv'` / `'github'` literals were scattered across 18 call sites in `local-db.ts` (backfill migration, both upsert paths' `INSERT`/`ON CONFLICT` guards, the prune filter) and `sync-orchestrator.ts` (cursor get/set), so the "only OSV is prunable; GitHub columns are curated" invariant could silently drift via a typo'd literal at any one guard site (#56 added one more such site). All call sites now reference `ADVISORY_SOURCE.OSV` / `ADVISORY_SOURCE.GITHUB` from one module. No behavior change — 406/406 tests green.
+
 ## [0.3.3] — 2026-07-04
 
 ### Refactors
