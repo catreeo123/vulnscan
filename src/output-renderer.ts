@@ -11,6 +11,21 @@ const SEVERITY_COLOR: Record<Severity, (s: string) => string> = {
 
 const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'moderate', 'low']
 
+// Strip C0/C1 control characters (including ESC 0x1b and BEL) from attacker-influenceable fields
+// before writing them to the terminal. Package names, versions, and npm-alias keys (Finding.via)
+// flow from the lockfile; raw escape sequences there could clear the screen, reposition the cursor,
+// or overlay a fake "clean" summary over real findings. The JSON renderer is unaffected — JSON
+// string escaping already neutralizes control characters.
+function stripControl(s: string): string {
+  let out = ''
+  for (const ch of s) {
+    const c = ch.charCodeAt(0)
+    // Drop C0 controls (0x00–0x1f), DEL (0x7f), and C1 controls (0x80–0x9f); keep everything else.
+    if (c > 0x1f && c !== 0x7f && (c < 0x80 || c > 0x9f)) out += ch
+  }
+  return out
+}
+
 function canonicalUrl(id: string, fallback: string): string {
   if (id.startsWith('CVE-')) return `https://nvd.nist.gov/vuln/detail/${id}`
   if (id.startsWith('GHSA-')) return `https://github.com/advisories/${id}`
@@ -63,7 +78,7 @@ export function renderGrouped(findings: Finding[], warnings: ScanWarning[]): str
 
   if (warnings.length > 0) {
     lines.push(chalk.dim('Warnings:'))
-    for (const w of warnings) lines.push(chalk.dim(`  ! ${w.message}`))
+    for (const w of warnings) lines.push(chalk.dim(`  ! ${stripControl(w.message)}`))
     lines.push('')
   }
 
@@ -96,16 +111,17 @@ export function renderGrouped(findings: Finding[], warnings: ScanWarning[]): str
 
     for (const [, pkgFindings] of byPkg) {
       const sample = pkgFindings[0]
-      const viaStr = sample.via !== undefined ? ` [via ${sample.via}]` : ''
-      lines.push(`  ${sample.name}@${sample.version}${viaStr}`)
+      const viaStr = sample.via !== undefined ? ` [via ${stripControl(sample.via)}]` : ''
+      lines.push(`  ${stripControl(sample.name)}@${stripControl(sample.version)}${viaStr}`)
 
       for (const pf of pkgFindings) {
         const fix = firstFixedDisplay(pf.advisory.ranges)
         const fixStr = fix !== undefined ? `  → fix: ${fix}` : ''
         const url = canonicalUrl(pf.advisory.id, pf.advisory.url)
-        const title = pf.advisory.title.length > 60 ? pf.advisory.title.slice(0, 60) + '…' : pf.advisory.title
-        lines.push(`    ${pf.advisory.id}  ${title}${fixStr}`)
-        lines.push(`    ${url}`)
+        const safeTitle = stripControl(pf.advisory.title)
+        const title = safeTitle.length > 60 ? safeTitle.slice(0, 60) + '…' : safeTitle
+        lines.push(`    ${stripControl(pf.advisory.id)}  ${title}${fixStr}`)
+        lines.push(`    ${stripControl(url)}`)
       }
     }
   }

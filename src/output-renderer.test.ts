@@ -263,6 +263,33 @@ describe('renderGrouped', () => {
     expect(output).toContain('1 finding')
     expect(output).not.toContain('1 findings')
   })
+
+  // ── Behavior 13: Terminal escape sanitization (output spoofing) ───────────────
+
+  it('strips terminal control sequences from attacker-influenced fields', () => {
+    // Finding.name/version/via and advisory.id/title/url derive from lockfile + advisory data,
+    // some of it attacker-influenceable (e.g. an npm alias key becomes `via`). Raw ANSI/OSC
+    // sequences interpolated into the text renderer let a crafted lockfile clear the screen,
+    // reposition the cursor, or overlay a fake "clean" summary over real findings. They must be
+    // stripped. (chalk only emits SGR `ESC[..m`; the ED/CUP/OSC/BEL sequences below never come
+    // from chalk, so asserting their absence is robust whether or not colour is enabled.)
+    const finding: Finding = {
+      name: 'evil[2J[H',           // clear screen + cursor home
+      version: '1.0.0',
+      via: ']0;pwned',             // OSC window-title + BEL
+      advisory: mkAdvisory({ severity: 'high', id: 'CVE-2099-9999', title: 'x[1;31my' }),
+    }
+    const output = renderGrouped([finding], [])
+    expect(output).not.toContain('[2J')  // ED — clear screen
+    expect(output).not.toContain('[H')   // CUP — cursor home
+    expect(output).not.toContain(']0;')  // OSC — set window title
+    expect(output).not.toContain('')     // BEL
+  })
+
+  it('strips terminal control sequences from warning messages', () => {
+    const output = renderGrouped([], [incomplete('pkg[2J spoof')])
+    expect(output).not.toContain('[2J')
+  })
 })
 
 // ── renderJson ────────────────────────────────────────────────────────────────
