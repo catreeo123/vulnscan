@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.24] — 2026-07-04
+
+### Internal
+
+- **npm distribution restored to the public npmjs registry** — `publishConfig` has pointed at GitHub Packages (`npm.pkg.github.com`, commit `b82030e`, 2026-05-27) while `npm publish` was removed from release CI at v0.2.9, so the public registry stalled at 0.2.7 and README's `npm install -g @catreeo123/vulnscan` served a stale package. `publishConfig.registry` is removed (default npmjs; `access: public` kept for the scoped name). Publishing remains a manual `npm publish` step.
+
 ## [0.2.23] — 2026-07-03
 
 Security & correctness hardening from an audit pass. Each fix below reproduces a real false-negative, data-corruption, or input-crash path (regression tests added for every one).
