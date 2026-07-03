@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.26] — 2026-07-04
+
+### Fixes
+
+- **A `file:` tarball dependency is no longer scanned as a registry package (false positive)** — `resolveEntry` guarded git-sourced deps (`git+`, `git://`, `github:`, `bitbucket:`, `gitlab:`) but not `file:`. A `file:` tarball dep (e.g. `file:../foo.tgz`) installs under `node_modules/` with a `version` and no `link`, so it fell through to the plain-dep branch and was matched against the advisory database — a name/version coincidence with a real package could produce a spurious Finding, and the dependency's actual content (which is arbitrary local code, not tied to the npm registry) can't be checked against registry version ranges either way. `file:`-resolved entries now emit an `incomplete` warning and no dep, mirroring the git-source guard. (#41)
+
 ## [0.2.25] — 2026-07-04
 
 ### Fixes

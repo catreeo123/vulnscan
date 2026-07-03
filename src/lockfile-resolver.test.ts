@@ -169,6 +169,31 @@ describe('resolveEntry', () => {
     expect(result.warning?.class).toBe('incomplete')
   })
 
+  // ── file: tarball dep ───────────────────────────────────────────────────────
+  it('file: tarball dep: emits no dep, incomplete warning (#41)', () => {
+    // A file: tarball dep (e.g. "file:../foo.tgz") installs under node_modules with a version
+    // and no link — falling through to the plain-dep branch would scan it as a registry package,
+    // producing a false-positive Finding if its name+version happen to collide with a real
+    // Advisory. Mirrors the git-source guard: uncheckable against the registry, so incomplete.
+    const result = resolveEntry(
+      'node_modules/my-local-pkg',
+      { version: '1.0.0', resolved: 'file:../my-local-pkg.tgz' },
+    )
+    expect(result.dep).toBeUndefined()
+    expect(result.warning).toBeDefined()
+    expect(result.warning?.class).toBe('incomplete')
+    expect(result.warning?.message).toMatch(/my-local-pkg/)
+  })
+
+  it('file: directory dep without link:true: still guarded as file:-sourced', () => {
+    const result = resolveEntry(
+      'node_modules/nested/other-local',
+      { version: '2.0.0', resolved: 'file:../other-local' },
+    )
+    expect(result.dep).toBeUndefined()
+    expect(result.warning?.class).toBe('incomplete')
+  })
+
   // ── No version → skip silently ──────────────────────────────────────────────
   it('entry without version: returns empty result', () => {
     const result = resolveEntry('node_modules/virtual', {} as PackageEntry)

@@ -59,6 +59,17 @@ export function resolveEntry(
     return { warning: incomplete(`${name}: git-sourced dep skipped (cannot check version range)`) }
   }
 
+  // file: tarball/directory dep — installs under node_modules with a version and no link, so it
+  // would otherwise fall through to the plain-dep branch and be scanned as a registry package.
+  // Its name/version are arbitrary local content, not tied to the npm registry, so a coincidental
+  // match against an Advisory would be a false positive — and a genuine local vulnerability can't
+  // be checked against registry ranges either. Skip like a git-sourced dep (#41).
+  if (pkg.resolved?.startsWith('file:')) {
+    const parts = path.split('node_modules/')
+    const name = parts[parts.length - 1]
+    return { warning: incomplete(`${name}: file:-sourced dep skipped (cannot check version range)`) }
+  }
+
   // npm workspace: entry has link:true, OR path matches a root workspace glob
   // A lockfile-only tamper can hide a real registry dep by adding link:true to its
   // node_modules/<pkg> entry (which keeps its version + resolved tarball), making the scanner treat
