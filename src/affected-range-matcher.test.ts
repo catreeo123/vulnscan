@@ -195,4 +195,29 @@ describe('matchAffected', () => {
     expect(matchAffected({ name: 'la-pkg', version: '1.2.4' }, [advisory])).toHaveLength(0)
     expect(matchAffected({ name: 'la-pkg', version: '2.0.0' }, [advisory])).toHaveLength(0)
   })
+
+  it('matches a CalVer advisory range with a leading-zero component — must not silently miss', () => {
+    // Real case (nocodb, CVE-2026-53926): GitHub returns "<= 2026.05.0" — valid npm CalVer, but
+    // invalid strict semver (leading zero in "05"). Without { loose: true }, semver.satisfies
+    // fails to parse the range and returns false for every version → the vulnerable package is
+    // silently reported clean (false negative for a real, currently-open CVE).
+    const advisory: Advisory = {
+      id: 'CVE-2026-53926', canonicalId: 'GHSA-g72g-r7m4-9x4g', type: 'cve', packageName: 'nocodb',
+      ranges: [{ rawRange: '<= 2026.05.0' }], severity: 'high',
+      title: 'CalVer range', url: 'https://github.com/advisories/GHSA-g72g-r7m4-9x4g',
+    }
+    expect(matchAffected({ name: 'nocodb', version: '2026.4.0' }, [advisory])).toHaveLength(1)
+    expect(matchAffected({ name: 'nocodb', version: '2027.1.0' }, [advisory])).toHaveLength(0)
+  })
+
+  it('matches an OSV-built range whose fixed bound is CalVer with a leading zero', () => {
+    // buildSemverRange({ fixed: '2026.03.28' }) → ">=0 <2026.03.28"; the "03" leading zero makes
+    // the range unparseable in strict mode → false negative for every version below the fix.
+    const advisory: Advisory = {
+      id: 'CVE-2026-32846', canonicalId: 'CVE-2026-32846', type: 'cve', packageName: 'openclaw',
+      ranges: [{ introduced: '0', fixed: '2026.03.28' }], severity: 'high',
+      title: 'CalVer fixed bound', url: 'https://osv.dev/vulnerability/CVE-2026-32846',
+    }
+    expect(matchAffected({ name: 'openclaw', version: '2026.2.0' }, [advisory])).toHaveLength(1)
+  })
 })

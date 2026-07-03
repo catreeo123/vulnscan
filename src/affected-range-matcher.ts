@@ -25,7 +25,11 @@ export function matchAffected(dep: Dep, advisories: Advisory[]): Finding[] {
       const raw = range.rawRange ? normalizeRawRange(range.rawRange) : undefined
       const semverRange = raw
         ?? buildSemverRange(range)
-      return semver.satisfies(dep.version, semverRange, { includePrerelease: true })
+      // `loose: true`: advisory ranges from OSV/GitHub often carry CalVer bounds with leading
+      // zeros (e.g. "<= 2026.05.0"), which strict semver refuses to parse — satisfies() then
+      // silently returns false for every version, missing a real vulnerability. Loose mode coerces
+      // them so the range is evaluated rather than dropped.
+      return semver.satisfies(dep.version, semverRange, { includePrerelease: true, loose: true })
     })
 
     if (matched) {
